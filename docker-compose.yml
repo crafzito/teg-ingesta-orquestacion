@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: teg_postgres
+    container_name: sap_etl_postgres
     environment:
-      POSTGRES_DB: teg_etl
-      POSTGRES_USER: etl_user
-      POSTGRES_PASSWORD: etl_pass
+      POSTGRES_DB: sap_etl
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:

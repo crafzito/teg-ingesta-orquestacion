@@ -96,7 +96,7 @@ docker-compose up -d
 
 **Terminal 2 - Backend API:**
 ```bash
-uvicorn api.main:app --reload --port 8000
+uvicorn backend.main:app --reload --port 8000
 ```
 
 **Terminal 3 - Frontend:**
@@ -115,12 +115,12 @@ Una vez levantados los tres servicios:
 
 ```bash
 docker-compose up -d
-python -m etl.run --clientes "filesTest/Clientes Consumo - Hoja 1.csv" --ventas "filesTest/Copia de Ventas_Mes_Consumo - Copia de Hoja 1.csv" --batch-id batch_test
+python -m etl.run --clientes "data/samples/Clientes Consumo - Hoja 1.csv" --ventas "data/samples/Copia de Ventas_Mes_Consumo - Copia de Hoja 1.csv" --batch-id batch_test
 ```
 
 ### Opcion C: ETL en modo watch (automatico)
 
-Coloca archivos CSV en la carpeta `input/` con el formato:
+Coloca archivos CSV en la carpeta `data/input/` con el formato:
 - `ventas_YYYYMMDD_HHMMSS.csv` (obligatorio)
 - `clientes_YYYYMMDD_HHMMSS.csv` (opcional)
 
@@ -181,7 +181,7 @@ curl -X POST http://localhost:8000/api/query \
 
 ```
 TEG/
-├── api/                    # API REST (FastAPI)
+├── backend/                # API REST (FastAPI)
 │   └── main.py             # Endpoints
 ├── etl/                    # Pipeline ETL
 │   ├── __main__.py          # Entry point (batch y watch)
@@ -196,10 +196,12 @@ TEG/
 ├── frontend/               # Interfaz web (React + Vite)
 ├── sql/                    # Scripts DDL (001-008)
 ├── tests/                  # Tests unitarios (pytest)
-├── filesTest/              # Archivos CSV de prueba
-├── input/                  # Directorio para modo watch
-├── output/                 # CSVs enriquecidos de auditoria
+├── data/                   # Archivos de datos
+│   ├── input/              # Directorio para modo watch
+│   ├── output/             # CSVs enriquecidos de auditoria
+│   └── samples/            # Archivos CSV de prueba
 ├── docs/                   # Documentacion adicional
+│   └── guide_prompt/       # Guias y ejemplos de prompts
 ├── .env.example            # Template de configuracion
 ├── docker-compose.yml      # PostgreSQL containerizado
 └── requirements.txt        # Dependencias Python

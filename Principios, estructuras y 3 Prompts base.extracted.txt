@@ -1,0 +1,235 @@
+Workbook A4F: Ingeniería de Contexto para el Diseño de Sistemas Agénticos
+Versión: 2.1 (Iteración de Precisión)
+Audiencia: Equipo de Desarrollo LLM (A4F)
+Propósito: Estandarizar y aplicar nuestra metodología de Ingeniería de Contexto para construir, delegar y auditar sistemas agénticos de nivel de producción.
+1. El Mindset A4F: De Asistente a Desarrollador SWE Asíncrono
+El primer cambio es de mentalidad. Abandonamos el uso de LLMs como meros asistentes para consultas "naif" (ej. "explícame este error").
+En A4F, tratamos a la IA como un Desarrollador de Software (SWE) Asíncrono. Nuestra tarea es conceptualizar y delegar desafíos técnicos completos (módulos, componentes de punta a punta) a un agente que opera con un contexto global híper-definido.
+Para entender por qué esto es un game-changer, usamos esta analogía:
+* El LLM (Large Language Model) es la CPU: El motor de razonamiento que maneja operaciones complejas.
+* La Ventana de Contexto es la RAM: La memoria volátil y de corto plazo con la que trabaja el LLM.
+* La Ingeniería de Contexto es el Sistema Operativo: Nuestra disciplina. Es el sistema que asegura que la información correcta y relevante (código, reglas, herramientas, memoria) esté cargada en la RAM en el momento preciso para que la CPU tome la mejor decisión.
+2. Los 7 Pilares de la Ingeniería de Contexto
+Nuestra "Ingeniería de Contexto" consiste en gestionar activamente los 7 componentes que el agente "ve" en cada paso de un flujo:
+* User Prompt: El input inicial del usuario o del sistema que dispara la tarea.
+* Instructions / System Prompt: Las directrices globales y del proyecto (ver Patrón de 8 Puntos). Guían cómo procesar la información.
+* Long-Term Memory (Memoria a Largo Plazo): Datos persistentes útiles para tareas futuras (ej. Bases de datos vectoriales, RAG).
+* State / History (Memoria a Corto Plazo): El estado actual de la tarea. Mantiene los datos necesarios ahora (ej. "el usuario ya se autenticó").
+* Retrieved Information (RAG): Información específica recuperada de la memoria a largo plazo que es relevante para la decisión actual.
+* Available Tools (Herramientas Disponibles): Funciones, APIs y herramientas externas que el agente puede invocar para operaciones complejas.
+* Structured Output: La definición del formato de salida (ej. JSON, ZIP, XML) que el agente debe producir.
+3. Arquitectura Operativa A4F: El Flujo Multi-LLM
+No usamos un solo LLM para todo. Asignamos roles basados en fortalezas para ejecutar la delegación:
+* El Arquitecto de Prompts (Gemini):
+* Misión: Tomar un Metaprompt (la solicitud de delegación inicial del desarrollador humano) y transformarlo en un Máster Prompt (la instrucción final, estructurada y lista para el agente).
+* Por qué: Usamos Gemini por su capacidad narrativa y su ventana de contexto masiva (1M tokens). Puede procesar el Metaprompt (que es más conversacional) junto con todo el código, las HUs, y los documentos adjuntos sin perder detalle, para generar el Máster Prompt estructurado de 8 puntos.
+* El Desarrollador Cirujano (GPT-5 Pro / Razonador):
+* Misión: Recibir el Máster Prompt (generado por Gemini) y ejecutar la tarea de desarrollo.
+* Por qué: Aunque su ventana de contexto es menor, su cualidad es desarrollar mejor el código. Es el "cirujano" que se enfoca en la tarea híper-definida. Su entregable es el artefacto de software (ej. un .zip).
+* El Auditor de Calidad (Modo Agéntico / Sandbox):
+* Misión: Recibir el artefacto (.zip) del "Cirujano", desplegarlo en un sandbox seguro, ejecutar pruebas, encontrar errores y proponer correcciones.
+* Implementación: Se logra con el "modo agéntico" de GPT-5 Pro, o mediante agentes SWE asincrónicos (LangGraph) o CLIs que pueden ejecutar código.
+4. El Método A4F: La Estructura de 8 Puntos del Máster Prompt
+Para forzarnos a pensar como arquitectos, todo Metaprompt (la solicitud humana) es procesado por Gemini para generar un Máster Prompt (la delegación al Agente) que sigue esta estructura fundacional de 8 puntos:
+* Global System Prompt (GSP): Nuestros parámetros y patrones como empresa (A4F) para desarrollar software (calidad, seguridad, FinOps).
+* Project System Prompt (PSP): Los parámetros específicos del proyecto (stack tecnológico, repositorios, contexto de negocio).
+* Open Source projects reference: Links a repositorios (MIT/Apache) que sirvan como inspiración o estándar.
+* Key Papers: Artículos (Arxiv.org, 2023+) que provean el marco teórico o conceptual.
+* Example: Un ejemplo de código concreto que ilustra el patrón de diseño o la lógica deseada.
+* Previous Code: El código existente, documentos adjuntos, HUs, o cualquier contexto previo relevante.
+* Challenge Prompt: La definición explícita del problema, los componentes a desarrollar, el foco de valor y las restricciones.
+* Bases para futuras evoluciones (V2.0): Pistas sobre cómo la solución debe escalar o evolucionar.
+5. Librería de Patrones: Metaprompt y Máster Prompts
+A continuación, se presentan los patrones que forman el núcleo de nuestro flujo de trabajo.
+5.1. Patrón 0: El Metaprompt (Input para Gemini)
+Este es el input que el desarrollador humano escribe y entrega a Gemini (Rol 1) para generar el Máster Prompt. Es una descripción detallada del problema, incluyendo contexto, HUs y referencias.
+Ejemplo de Metaprompt (Caso "Propinota"):
+> Debemos migrar el backend realizado en php a python, manteniendo el nivel logico actual, funciones, endpoinds, servicios, con la diferencia que ahora se manejara bajo un esquema serverless para eso utilizaremos servicios de aws amazon, actualmente en el codigo @propinota-backend tenemos avances...
+> Sumando a eso debemos crear un servicio donde utilizaremos https://github.com/BerriAI/litellm
+> ...debemos manejar el login con google auth...
+> Una de las mejorar que debemos implementar es la siguiente:
+> EP7.1 - Back End - Crear Modelos y Endpoints para el Motor de Trivias
+> Contexto (El Porqué):
+> Como desarrollador Frontend,
+> Quiero tener los endpoints necesarios para obtener la información de los mundos, las trivias y el progreso del jugador,
+> Para que pueda construir la interfaz del "Modo Historia" con datos reales del servidor.
+> Flujo Paso a Paso / Criterios de Aceptación:
+> Paso 1: Diseño de la Base de Datos
+> [] Se crea una tabla Mundos (idMundo, nombre, descripcion, orden, assetMapa).
+> [] Se crea una tabla NivelesTrivia (idNivel, idMundo, orden, pregunta, opciones (JSON), respuestaCorrecta).
+> [] Se crea una tabla ProgresoUsuario (idProgreso, idPersona, idMundo, estado ('bloqueado', 'desbloqueado', 'completado'), puntaje).
+> Paso 2: Endpoints de la API
+> [] Crear GET /modo-historia/mapa
+> [] Crear GET /modo-historia/mundo/{idMundo}/niveles
+> [] Crear POST /modo-historia/nivel/{idNivel}/responder
+> [] Crear POST /modo-historia/mundo/{idMundo}/completar
+> Notas Adicionales (Notas de Senior Dev):
+> La tabla ProgresoUsuario debe crearse para cada niño/a cuando se registra su perfil...
+> Es importante mantener un patron de diseño escalable.
+> Necesito que crees una estructura de Prompt para delegar esta tarea a un agente de IA asincrónico SWE.
+> Este es el modelo/estructura/patrón de Prompt que debes seguir y que te debe inspirar:
+> [Aquí se adjunta la plantilla vacía del Patrón 1, para que Gemini la llene]
+>
+5.2. Patrón 1: El Máster Prompt de Desarrollo (Output de Gemini)
+Este es el output de Gemini, basado en el Metaprompt anterior. Es el Máster Prompt estructurado que se entrega al Agente SWE Desarrollador (Rol 2).
+PROMPT PARA AGENTE SWE ASÍNCRONO (Iteración 12)
+ASUNTO: Go-Live Módulo del Gateway de IA & RouteLLM (IMS Infinity)
+DE: Líder Técnico
+PARA: Agente SWE de IA Asíncrono
+MISIÓN: Desarrollar e implementar el Gateway de IA y el servicio RouteLLM para IMS Infinity. Tu objetivo es construir un proxy inteligente y centralizado... [etc.]
+1. Global System Prompt (GSP)
+Eres un equipo de ingeniería de software full-stack de élite. Tu responsabilidad es construir y entregar artefactos de software completos, prescriptivos y sin placeholders...
+Mandatos de Calidad y FinOps:
+● Gobernanza de Costes: El RouteLLM es nuestra principal herramienta de control de costes de IA...
+● Resiliencia: El gateway debe implementar mecanismos de reintentos...
+● Seguridad por Defecto: Implementa autenticación/autorización con Cognito (JWT)...
+● Observabilidad Mínima: Implementa structured logging con un traceId...
+2. Project System Prompt (PSP)
+Proyecto: IMS Infinity (ecosistema X-Worlds)
+Contexto Agéntico: Este módulo es un servicio de infraestructura crítica...
+Stack Tecnológico:
+● Backend: Python 3.12+, FastAPI, Pydantic.
+● Infraestructura: AWS Serverless (Lambda/Fargate, API Gateway, Secrets Manager, CloudWatch).
+● IaC: AWS CDK en TypeScript.
+● CI/CD: GitHub Actions.
+3. Open Source Projects Reference (Whitelist: MIT/Apache)
+● LiteLLM: Utiliza este proyecto como principal fuente de inspiración... [LiteLLM en GitHub](https://github.com/BerriAI/litellm).
+● Boto3: Para la interacción con AWS Secrets Manager y CloudWatch.
+● AWS CDK: Para la definición de la infraestructura del gateway.
+4. Key Papers
+● "Cost-Effective and Latency-Aware Routing for Large Language Model Inference" (Proceedings of the VLDB Endowment, 2024): Este paper proporciona el marco teórico...
+● "A Survey on Techniques for Maximizing LLM Performance" (ACM Computing Surveys, 2024): Utiliza los conceptos de este paper para implementar optimizaciones...
+5. Example
+Patrón de Desarrollo para el RouteLLM: A continuación se muestra el patrón para la lógica central del enrutador...
+# en services/llm_gateway/router.py
+def route_request(prompt: str, context: dict) -> dict:
+# ... (lógica de ejemplo) ...
+pass
+6. Previous Code
+Analiza los 12 documentos .docx adjuntos. Tus fuentes de verdad para este módulo son:
+● HU-Infinity.docx (Entregable 2): Contiene las HU IMS-11 a IMS-20...
+● CX-Infinity.docx (Entregable 2): Describe el rol del RouteLLM...
+7. Challenge Prompt
+Misión: Desarrollar y desplegar el Gateway de IA & RouteLLM de IMS Infinity.
+Fase 1: Esquema de Datos y Migraciones (Entregable: services/common/database_models.py, alembic/versions/)
+1. Tarea: Define el modelo de SQLAlchemy para la tabla llm_api_calls (HU-IMS-17)...
+Fase 2: Implementación de Historias de Usuario (Entregable: services/llm_gateway/, services/api/main.py)
+1. Tarea: Implementa la lógica de negocio y los endpoints para...
+○ IMS-11: Endpoint Unificado /llm/invoke.
+○ IMS-13: Lógica de RouteLLM.
+○ IMS-14: Integración con Secrets Manager.
+○ IMS-16: Failover Automático.
+○ IMS-17: Logging y Métricas de FinOps.
+Fase 3: Infraestructura como Código y Entrega Final (Entregable: iac/lib/, pipelines/, pull_request.md, delivery.zip)
+1. Tarea: Crea el stack de AWS CDK iac/lib/llm_gateway_stack.ts...
+2. Tarea: Escribe tests unitarios para la lógica de enrutamiento y failover.
+3. Tarea: Prepara el pull_request.md...
+4. Tarea: Empaqueta todos los artefactos en la estructura .zip estándar...
+5.3. Patrón 2: Auditoría y Refactorización (El Prompt de QA)
+Este Máster Prompt se entrega al Agente SWE Auditor (Rol 3), junto con el .zip generado por el Rol 2.
+Genera un Informe Técnico de Calidad y Preparación para Producción, implementa las correcciones iterando el ZIP. Debe tener código completo y funcional sin data stub, placeholders o extractos de código...
+Asume el rol de un Líder Técnico delegando una tarea de auditoría y refactorización... Tú eres el AGENTE SWE ASÍNCRONO (Revisa e itera el Delivery hecho).
+MISIÓN: Realizar una auditoría técnica exhaustiva del artefacto delivery.zip... Tu objetivo es doble:
+1. Generar un "Informe Técnico de Calidad y Preparación para Producción"...
+2. Implementar las correcciones necesarias... entregando una nueva versión (delivery-v2.zip)...
+1. Global System Prompt (GSP)
+Eres un agente de IA con el rol de Arquitecto Principal de Software y Fiabilidad...
+Mandatos de Calidad del Código:
+● No solo reportes, corrige: Tu principal entregable no es solo el informe; es el código mejorado.
+● Evita archivos >300 líneas: Refactoriza la lógica compleja...
+● ... (etc.)
+2. Project System Prompt (PSP)
+Proyecto: IMS Infinity - Módulo de Facturación y Ventas.
+Misión: Auditar el delivery.zip recién entregado...
+Contexto Técnico: La plataforma está construida sobre una arquitectura serverless en AWS...
+3. Open Source Projects Reference
+Utiliza las siguientes herramientas y sus reportes como benchmark para la estructura de tu informe:
+● pytest-cov: Para el reporte de cobertura de pruebas.
+● SonarQube: Tu reporte de "Limpieza de Código y Deuda Técnica" debe emular sus métricas...
+● OWASP Zed Attack Proxy (ZAP) / Bandit: La sección de "Revisión de Seguridad"...
+4. Key Papers
+● "Managing Technical Debt in Serverless Applications" (arXiv, 2024): Utiliza la taxonomía...
+● "Security and Governance of Autonomous AI Agents in Multi-Tenant Systems" (arXiv, 2024): Basa tu análisis...
+5. Example
+A continuación, un fragmento de cómo debe lucir una sección del informe final:
+> 2. Revisión de Seguridad (Zero-Trust)
+> ...
+>  * Vulnerabilidades Altas: 1 (Falta de validación de organization_id...)
+> Acción Requerida: Se ha implementado la corrección directamente en services/agents/finance_agent.py...
+6. Previous Code
+El input para tu análisis es el artefacto delivery.zip...
+7. Challenge Prompt
+Tu Desafío: Genera el "Informe de Calidad y Preparación para Producción" en formato informe-calidad-facturacion-v1.md y, simultáneamente, implementa las correcciones...
+Informe (Markdown):
+Sección 1: Análisis de Pruebas Unitarias y de Integración
+● Métricas a Reportar: Cobertura de código (%)...
+● Análisis y Correcciones Implementadas: Evalúa si los tests cubren los "caminos felices"...
+Sección 2: Revisión de Seguridad (Zero-Trust)
+● Métricas a Reportar: Clasificación de vulnerabilidades...
+● Análisis y Correcciones Implementadas: Valida y corrige: Que todos los endpoints...
+Sección 3: Limpieza de Código y Deuda Técnica
+● Métricas a Reportar: Porcentaje de código duplicado...
+● Análisis y Correcciones Implementadas: Identifica y refactoriza...
+Sección 4: Análisis de Escalabilidad y Rendimiento Serverless
+● Métricas a Reportar: Resultados de pruebas de carga: P95 de latencia...
+● Análisis y Correcciones Implementadas: Identifica el principal cuello de botella...
+Entregable Final:
+Un único archivo delivery-v2.zip con la siguiente estructura:
+delivery-v2.zip
+├── iac/
+│   ├── lib/
+│   │   ├── finance_stack.ts      # Corregido con optimizaciones...
+│   │   └── ...
+├── services/
+│   ├── agents/
+│   │   ├── finance_agent.py      # Código refactorizado y optimizado
+│   │   └── ...
+└── informe-calidad-facturacion-v1.md # El informe Markdown que generaste
+5.4. Patrón 3: Documentación y Transferencia (Obligatorio)
+Este Máster Prompt se utiliza al finalizar un desarrollo para generar el manual de transferencia de conocimiento para soporte y mantenimiento.
+Eres un experto en elaborar documentación de transferencia de conocimiento... Dispones del código fuente de una plataforma (se adjuntan)...
+Tu tarea es generar un manual en 10 entregas sucesivas. A continuación, te consigno un ejemplo como “modelo”...
+1. Global System Prompt
+Eres un agente de IA con el rol de Arquitecto de Documentación Técnica Senior. Tu especialidad es transformar código fuente complejo en manuales...
+2. Project System Prompt
+Proyecto: Manual de Operación y Soporte para Plataforma de Procesamiento de Datos.
+Misión: Generar un manual de transferencia de conocimiento exhaustivo, dividido en 10 entregas incrementales...
+Contexto Técnico: La plataforma consta de tres módulos principales...
+3. Open Source Projects Reference
+Utiliza la estructura y claridad de la siguiente documentación como benchmark...
+● GitLab Handbook (https://handbook.gitlab.com/)
+● Stripe Docs (https://stripe.com/docs)
+4. Key Papers (Conceptual Framework)
+● Cognitive Load Theory in Instructional Design: Escribe el contenido de manera que minimice la carga cognitiva...
+● Human-Centered Design for Technical Documentation: Enfoca cada capítulo en resolver un problema...
+5. Example
+A continuación, un ejemplo del formato y nivel de detalle esperado...
+> 4.1. Flujo de Datos: Caso de Uso "Nuevo Reporte"
+> ...
+> ```mermaid
+> sequenceDiagram
+>     participant User
+>     participant Frontend
+>     participant Edge Processor
+>     participant Backend
+>
+>     User->>Frontend: Rellena y envía formulario de "Nuevo Reporte"
+>     Frontend->>Edge Processor: POST /api/v1/reports (JSON)
+>     ...
+> ```
+6. Previous Code
+Para esta tarea, tienes acceso completo y actualizado al código fuente de los tres repositorios...
+7. Challenge Prompt
+Tu Desafío: Ejecuta la creación del manual en 10 entregas. Comienza con la Primera Entrega.
+Primera Entrega: Fundamentos y Arquitectura
+...
+* Alcance de la Entrega:
+* Índice Completo del Manual (10 Capítulos): Crea el índice detallado...
+* Capítulo 1: Introducción y Arquitectura General: Desarrolla completamente el primer capítulo...
+* Capítulo 2: Monitoreo y Puntos Críticos de Falla: Desarrolla completamente el segundo capítulo...
+* Criterios de Éxito para la Primera Entrega:
+* ✅ El índice completo de las 10 entregas está definido...
+* ✅ Los Capítulos 1 y 2 están completamente desarrollados...
+* ✅ Se han incluido al menos dos diagramas mermaid...
+* ✅ El documento es claro para alguien sin conocimiento previo...
+Inicia la ejecución. Genera la Primera Entrega.

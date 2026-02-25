@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+
+# Env
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.test
+
+# Data (CSVs pesados, no subir al repo)
+data/input/*.CSV
+data/input/*.csv
+Div Consumo/
+
+# AI agent skills
+skills/
+
+# Logs
+*.log
+
+# AI assistants
+.claude/
+.gemini/
+.codex/
+.agents/
+.github/
+
+# agentskills.io
+agentskills.io
+
+# Node / Build
+node_modules/
+dist/
+build/
+coverage/
+
+# Misc
+/docs/
+/logs/
+/tmp/
+/uploads/
+/vendor/
+/www/
+/wwwroot/

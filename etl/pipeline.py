@@ -33,14 +33,15 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.sources   import SOURCES, CATALOGS, PRODUCTO_SOURCES, FACT_LOAD_ORDER
-from cleaners.transformers import TRANSFORMER_MAP, set_batch_id
+from config.columns   import getv, validate_headers
+from cleaners.transformers import TRANSFORMER_MAP, set_batch_id, _parse_bool
 from cleaners.transformers import transform_raw_ventas, transform_raw_clientes
 from loaders.loader   import (
     get_connection, file_md5, read_csv,
     already_loaded, start_execution, finish_execution, log_reject,
     upsert_rows, upsert_catalog_v2, _merge_via_line_hash,
 )
-from parsers.parsers  import normalize_text, normalize_code, mock_code, pk_hash
+from parsers.parsers  import normalize_text, normalize_code, mock_code, pk_hash, row_hash
 
 logging.basicConfig(
     level=logging.INFO,
@@ -120,17 +121,18 @@ def load_dim_vendedor(data_dir: str, dry_run: bool = False):
         logger.warning(f"  CLIENTES.CSV no encontrado")
         return
 
+    SK = "CLIENTES"
     vendedores = {}
     for row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
         # Vendedores
-        cod = normalize_code(row.get("Cod.Vend") or "")
-        nom = normalize_text(row.get("Nombre_vendedor") or "")
+        cod = normalize_code(getv(row, SK, "Cod.Vend") or "")
+        nom = normalize_text(getv(row, SK, "Nombre_vendedor") or "")
         if cod and cod not in vendedores:
             vendedores[cod] = {"cod_vendedor": cod, "nombre_vendedor": nom, "tipo": "VENDEDOR"}
 
         # Gerentes regionales
-        cod_g = normalize_code(row.get("Cód.Ger.Reg.") or "")
-        nom_g = normalize_text(row.get("Nombre Gte. Regional") or "")
+        cod_g = normalize_code(getv(row, SK, "Cód.Ger.Reg.") or "")
+        nom_g = normalize_text(getv(row, SK, "Nombre Gte. Regional") or "")
         if cod_g and cod_g not in vendedores:
             vendedores[cod_g] = {"cod_vendedor": cod_g, "nombre_vendedor": nom_g, "tipo": "GERENTE"}
 
@@ -138,11 +140,9 @@ def load_dim_vendedor(data_dir: str, dry_run: bool = False):
     if dry_run:
         return
 
-    # Agregar line_hash para el upsert genérico
     rows = []
     for v in vendedores.values():
-        v["line_hash"] = pk_hash(v["cod_vendedor"])
-        v["batch_id"]  = _BATCH_ID
+        v["batch_id"] = _BATCH_ID
         rows.append(v)
 
     with get_connection(DSN) as conn:
@@ -204,8 +204,7 @@ def load_dim_producto(data_dir: str, dry_run: bool = False):
 
     rows = []
     for p in productos.values():
-        p["line_hash"] = pk_hash(p["codigo_mat"])
-        p["batch_id"]  = _BATCH_ID
+        p["batch_id"] = _BATCH_ID
         rows.append(p)
 
     with get_connection(DSN) as conn:
@@ -229,51 +228,50 @@ def load_dim_cliente(data_dir: str, dry_run: bool = False):
 
     from parsers.parsers import parse_date
 
-    rows = []
+    SK = "CLIENTES"
+    seen = {}  # dedup por cod_cliente (CLIENTES.CSV puede tener duplicados)
     for row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
-        cod = normalize_code(row.get("Cod. Cliente") or "")
-        if not cod:
+        cod = normalize_code(getv(row, SK, "Cod. Cliente") or "")
+        if not cod or cod in seen:
             continue
 
-        # Convertir cod_vendedor y cod_gerente a sus códigos limpios
-        cod_vend   = normalize_code(row.get("Cod.Vend") or "")
-        cod_gerente = normalize_code(row.get("Cód.Ger.Reg.") or "")
+        cod_vend    = normalize_code(getv(row, SK, "Cod.Vend") or "")
+        cod_gerente = normalize_code(getv(row, SK, "Cód.Ger.Reg.") or "")
 
         clean = {
             "cod_cliente":            cod,
-            "nombre_cliente":         normalize_text(row.get("Nombre sol.") or ""),
-            "rif":                    normalize_code(row.get("RIF") or ""),
-            "direccion":              normalize_text(row.get("Dirección") or ""),
-            "telefono_fijo":          normalize_text(row.get("Telefono") or ""),
-            "telefono_movil":         normalize_text(row.get("Teléfono móvil") or ""),
-            "nombre_contacto":        normalize_text(row.get("Nombre persona conta") or ""),
-            "poblacion":              normalize_text(row.get("Poblacion") or ""),
-            "estado":                 normalize_text(row.get("Descrip. Estado") or ""),
-            "moneda":                 normalize_code(row.get("Moneda") or ""),
-            "cod_ruta_transporte":    normalize_code(row.get("Ruta Transp.") or ""),
-            "fecha_creacion_cliente": parse_date(row.get("Fecha de creacion") or ""),
-            "agente_retencion_flag":  _parse_bool(row.get("AG. RET.") or ""),
-            "num_ultima_factura":     normalize_code(row.get("Ult.Fact") or ""),
-            "fecha_ultima_factura":   parse_date(row.get("Fecha Fact") or ""),
-            "num_ultimo_pago":        normalize_code(row.get("Doc.Ult.Pago") or ""),
-            "fecha_ultimo_pago":      parse_date(row.get("Fecha Pago") or ""),
-            # FKs a catálogos (solo el código)
-            "cod_condicion_pago":     normalize_code(row.get("Cond. Pago") or ""),
-            "cod_ramo":               normalize_code(row.get("Ramo") or ""),
-            "cod_gpo_cliente":        normalize_code(row.get("Gr Clientes") or ""),
-            "cod_zona_ventas":        normalize_code(row.get("Zona Ventas") or ""),
-            "cod_grp_vendedor":       normalize_code(row.get("Grupo Vend.") or ""),
-            "cod_lista_precio":       normalize_code(row.get("Lista") or ""),
-            "cod_canal":              normalize_code(row.get("Canal") or ""),
+            "nombre_cliente":         normalize_text(getv(row, SK, "Nombre Sol.") or ""),
+            "rif":                    normalize_code(getv(row, SK, "RIF") or ""),
+            "direccion":              normalize_text(getv(row, SK, "Dirección") or ""),
+            "telefono_fijo":          normalize_text(getv(row, SK, "Telefono") or ""),
+            "telefono_movil":         normalize_text(getv(row, SK, "Teléfono móvil") or ""),
+            "nombre_contacto":        normalize_text(getv(row, SK, "Nombre persona conta") or ""),
+            "poblacion":              normalize_text(getv(row, SK, "Poblacion") or ""),
+            "estado":                 normalize_text(getv(row, SK, "Descrip. Estado") or ""),
+            "moneda":                 normalize_code(getv(row, SK, "Moneda") or ""),
+            "cod_ruta_transporte":    normalize_code(getv(row, SK, "Ruta Transp.") or ""),
+            "fecha_creacion_cliente": parse_date(getv(row, SK, "Fecha de creacion") or ""),
+            "agente_retencion_flag":  _parse_bool(getv(row, SK, "AG. RET.") or ""),
+            "num_ultima_factura":     normalize_code(getv(row, SK, "Ult.Fact") or ""),
+            "fecha_ultima_factura":   parse_date(getv(row, SK, "Fecha Fact") or ""),
+            "num_ultimo_pago":        normalize_code(getv(row, SK, "Doc.Ult.Pago") or ""),
+            "fecha_ultimo_pago":      parse_date(getv(row, SK, "Fecha Pago") or ""),
+            "cod_condicion_pago":     normalize_code(getv(row, SK, "Cond. Pago") or ""),
+            "cod_ramo":               normalize_code(getv(row, SK, "Ramo") or ""),
+            "cod_gpo_cliente":        normalize_code(getv(row, SK, "Gr Clientes") or ""),
+            "cod_zona_ventas":        normalize_code(getv(row, SK, "Zona Ventas") or ""),
+            "cod_grp_vendedor":       normalize_code(getv(row, SK, "Grupo Vend.") or ""),
+            "cod_lista_precio":       normalize_code(getv(row, SK, "Lista") or ""),
+            "cod_canal":              normalize_code(getv(row, SK, "Canal") or ""),
             "cod_vendedor":           cod_vend  or None,
             "cod_gerente":            cod_gerente or None,
             "is_placeholder":         False,
             "is_active":              True,
-            "line_hash":              pk_hash(cod),
             "batch_id":               _BATCH_ID,
         }
-        rows.append(clean)
+        seen[cod] = clean
 
+    rows = list(seen.values())
     logger.info(f"  {len(rows)} clientes en maestro")
     if dry_run:
         return
@@ -323,12 +321,60 @@ def _ensure_client_placeholders(conn, data_dir: str):
             "nombre_cliente": f"[PLACEHOLDER] {cod}",
             "is_placeholder": True,
             "is_active":      True,
-            "line_hash":      pk_hash(cod, "placeholder"),
             "batch_id":       _BATCH_ID,
         })
 
     upsert_rows(conn, "dim", "cliente", placeholders,
                 pk_columns=["cod_cliente"])
+
+
+# ──────────────────────────────────────────────────────────────────
+# Validación de headers CSV
+# ──────────────────────────────────────────────────────────────────
+
+def _validate_csv_headers(source_key: str, filepath: str, src_cfg: dict):
+    """
+    Lee la primera fila del CSV para extraer headers y valida contra
+    COLUMN_ALIASES. Fail-fast si faltan columnas PK (críticas).
+    """
+    import csv
+
+    encoding  = src_cfg.get("encoding", "latin-1")
+    delimiter = src_cfg.get("delimiter", ";")
+    pk_cols   = src_cfg.get("pk_cols", [])
+
+    with open(filepath, encoding=encoding, errors="replace", newline="") as f:
+        raw = f.read(3)
+        if not raw.startswith("\ufeff"):
+            f.seek(0)
+        else:
+            f.seek(3)
+        reader = csv.reader(f, delimiter=delimiter)
+        try:
+            actual_headers = [h.strip() for h in next(reader)]
+        except StopIteration:
+            raise RuntimeError(f"[{source_key}] CSV vacío: {filepath}")
+
+    result = validate_headers(source_key, actual_headers, critical_cols=pk_cols)
+
+    if result["missing_critical"]:
+        msg = (f"[{source_key}] HEADERS CRÍTICOS FALTANTES: "
+               f"{result['missing_critical']}. "
+               f"Headers reales: {actual_headers[:10]}...")
+        logger.error(msg)
+        raise RuntimeError(msg)
+
+    if result["missing_optional"]:
+        logger.warning(
+            f"[{source_key}] Headers opcionales sin match: "
+            f"{result['missing_optional']}"
+        )
+
+    if result["unexpected"]:
+        logger.info(
+            f"[{source_key}] Headers nuevos/inesperados en CSV: "
+            f"{result['unexpected'][:10]}"
+        )
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -366,12 +412,24 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
 
     logger.info(f"[{source_key}] Procesando {os.path.basename(filepath)}")
 
+    # ── Validación fail-fast de headers ──────────────────────────
+    _validate_csv_headers(source_key, filepath, src_cfg)
+
     clean_rows = []
     rejected   = []
     row_num    = 0
 
     for raw_row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
         row_num += 1
+
+        # Hardening: rechazar filas con keys None (separadores extra)
+        if None in raw_row or "" in raw_row.values():
+            none_keys = [k for k in raw_row if k is None]
+            if none_keys:
+                rejected.append((row_num, raw_row,
+                    f"Fila defectuosa: {len(none_keys)} columnas sin header (separadores extra)"))
+                continue
+
         result = transformer(raw_row)
         if result.is_valid:
             clean_rows.append(result.row)
@@ -425,17 +483,22 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
 
 def load_raw(data_dir: str, dry_run: bool = False):
     """
-    Guarda los CSV originales en raw.ventas y raw.clientes
-    sin ninguna transformación.
+    Guarda los CSV originales:
+      1. raw.ventas / raw.clientes  (compatibilidad temporal)
+      2. raw.source_data (JSONB)    (todas las fuentes, genérico)
     """
+    import json as _json
+    import psycopg2.extras
+
     logger.info("── PASO 6: Raw histórico ──────────────────────────")
 
-    jobs = [
+    # ── 6a: Tablas legacy (raw.ventas, raw.clientes) ──────────────
+    legacy_jobs = [
         ("PHXX",     "raw.ventas",   transform_raw_ventas),
         ("CLIENTES", "raw.clientes", transform_raw_clientes),
     ]
 
-    for src_key, raw_table, transform_fn in jobs:
+    for src_key, raw_table, transform_fn in legacy_jobs:
         src_cfg  = SOURCES.get(src_key)
         filepath = os.path.join(data_dir, src_cfg["file"])
         if not os.path.exists(filepath):
@@ -454,7 +517,6 @@ def load_raw(data_dir: str, dry_run: bool = False):
         if dry_run or not rows:
             continue
 
-        schema, table = raw_table.split(".")
         cols = list(rows[0].keys())
 
         with get_connection(DSN) as conn:
@@ -467,12 +529,93 @@ def load_raw(data_dir: str, dry_run: bool = False):
                     batch_id    = EXCLUDED.batch_id
                 WHERE {raw_table}.row_hash IS DISTINCT FROM EXCLUDED.row_hash
             """
-            import psycopg2.extras
-            values = [[r.get(c) for c in cols] for r in rows]
+            # Deduplicar por pk_hash (SAP exporta filas duplicadas)
+            pk_idx = cols.index("pk_hash") if "pk_hash" in cols else None
+            seen_pk = set()
+            values = []
+            for r in rows:
+                vals = [r.get(c) for c in cols]
+                if pk_idx is not None:
+                    pk = vals[pk_idx]
+                    if pk in seen_pk:
+                        continue
+                    seen_pk.add(pk)
+                values.append(vals)
+
+            dupes = len(rows) - len(values)
+            if dupes:
+                logger.info(f"  [{src_key}] {dupes} duplicados internos eliminados")
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(cur, sql, values, page_size=500)
                 affected = cur.rowcount
-            logger.info(f"  [{src_key}] raw: {affected} procesados")
+            logger.info(f"  [{src_key}] raw legacy: {affected} procesados")
+
+    # ── 6b: raw.source_data (JSONB genérico, todas las fuentes) ───
+    logger.info("  ── raw.source_data (JSONB genérico) ──")
+
+    for src_key, src_cfg in SOURCES.items():
+        filepath = os.path.join(data_dir, src_cfg["file"])
+        if not os.path.exists(filepath):
+            logger.debug(f"  [{src_key}] no encontrado, saltando raw genérico")
+            continue
+
+        source_file = os.path.basename(filepath)
+        pk_cols = src_cfg.get("pk_cols", [])
+        batch = []
+
+        for raw_row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
+            # PK hash: a partir de las pk_cols definidas en SOURCES
+            pk_values = [raw_row.get(c, "") for c in pk_cols]
+            p_hash = pk_hash(*pk_values) if pk_values else pk_hash(
+                _json.dumps(raw_row, ensure_ascii=False, sort_keys=True)
+            )
+            r_hash = row_hash(raw_row)
+            data_json = _json.dumps(
+                {k: v for k, v in raw_row.items() if k},
+                ensure_ascii=False,
+            )
+
+            batch.append((src_key, p_hash, r_hash, data_json, source_file, _BATCH_ID))
+
+        # Deduplicar por pk_hash (posición 1 en la tupla)
+        seen_pk = set()
+        deduped = []
+        for row in batch:
+            pk = row[1]  # p_hash
+            if pk in seen_pk:
+                continue
+            seen_pk.add(pk)
+            deduped.append(row)
+
+        dupes = len(batch) - len(deduped)
+        logger.info(f"  [{src_key}] {len(batch)} filas → raw.source_data"
+                     + (f" ({dupes} duplicados eliminados)" if dupes else ""))
+
+        if dry_run or not deduped:
+            continue
+
+        with get_connection(DSN) as conn:
+            sql = """
+                INSERT INTO raw.source_data
+                    (source_key, pk_hash, row_hash, data, source_file, batch_id)
+                VALUES %s
+                ON CONFLICT (source_key, pk_hash) DO UPDATE SET
+                    row_hash    = EXCLUDED.row_hash,
+                    data        = EXCLUDED.data,
+                    source_file = EXCLUDED.source_file,
+                    batch_id    = EXCLUDED.batch_id,
+                    loaded_at   = NOW()
+                WHERE raw.source_data.row_hash IS DISTINCT FROM EXCLUDED.row_hash
+            """
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur, sql, deduped,
+                    template="(%s, %s, %s, %s::jsonb, %s, %s)",
+                    page_size=500,
+                )
+                affected = cur.rowcount
+            logger.info(f"  [{src_key}] raw genérico: {affected} procesados")
 
 
 # ──────────────────────────────────────────────────────────────────

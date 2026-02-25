@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS dim.vendedor (
     cod_vendedor    VARCHAR(20)  PRIMARY KEY,
     nombre_vendedor TEXT,
     tipo            VARCHAR(10)  NOT NULL DEFAULT 'VENDEDOR',
-    _batch_id       VARCHAR(64),
+    batch_id        VARCHAR(64),
     _created_at     TIMESTAMPTZ  DEFAULT NOW(),
     _updated_at     TIMESTAMPTZ  DEFAULT NOW()
 );
@@ -107,13 +107,13 @@ CREATE TABLE IF NOT EXISTS dim.producto (
     denominacion_material TEXT         NOT NULL,
     categoria             VARCHAR(100),
     marca                 VARCHAR(100),
-    sector_cod            VARCHAR(20)  REFERENCES cat.sector(cod),
+    sector_cod            VARCHAR(20)  /* REFERENCES cat.sector(cod) */,
     gr_material           TEXT,
     gr_articulo           TEXT,
     jerarquia_1           TEXT,
     jerarquia_2           TEXT,
     jerarquia_3           TEXT,
-    _batch_id             VARCHAR(64),
+    batch_id              VARCHAR(64),
     _created_at           TIMESTAMPTZ  DEFAULT NOW(),
     _updated_at           TIMESTAMPTZ  DEFAULT NOW()
 );
@@ -139,20 +139,20 @@ CREATE TABLE IF NOT EXISTS dim.cliente (
     num_ultimo_pago         VARCHAR(30),
     fecha_ultimo_pago       DATE,
     -- FKs a catálogos
-    cod_condicion_pago  VARCHAR(20) REFERENCES cat.condicion_pago(cod),
-    cod_ramo            VARCHAR(20) REFERENCES cat.ramo(cod),
-    cod_gpo_cliente     VARCHAR(20) REFERENCES cat.gpo_cliente(cod),
-    cod_zona_ventas     VARCHAR(20) REFERENCES cat.zona_ventas(cod),
-    cod_grp_vendedor    VARCHAR(20) REFERENCES cat.grp_vendedor(cod),
-    cod_lista_precio    VARCHAR(20) REFERENCES cat.lista_precio(cod),
-    cod_canal           VARCHAR(20) REFERENCES cat.canal(cod),
+    cod_condicion_pago  VARCHAR(20) /* REFERENCES cat.condicion_pago(cod) */,
+    cod_ramo            VARCHAR(20) /* REFERENCES cat.ramo(cod) */,
+    cod_gpo_cliente     VARCHAR(20) /* REFERENCES cat.gpo_cliente(cod) */,
+    cod_zona_ventas     VARCHAR(20) /* REFERENCES cat.zona_ventas(cod) */,
+    cod_grp_vendedor    VARCHAR(20) /* REFERENCES cat.grp_vendedor(cod) */,
+    cod_lista_precio    VARCHAR(20) /* REFERENCES cat.lista_precio(cod) */,
+    cod_canal           VARCHAR(20) /* REFERENCES cat.canal(cod) */,
     -- FKs a vendedor (dos apuntando a la misma tabla)
-    cod_vendedor        VARCHAR(20) REFERENCES dim.vendedor(cod_vendedor),
-    cod_gerente         VARCHAR(20) REFERENCES dim.vendedor(cod_vendedor),
+    cod_vendedor        VARCHAR(20) /* REFERENCES dim.vendedor(cod_vendedor) */,
+    cod_gerente         VARCHAR(20) /* REFERENCES dim.vendedor(cod_vendedor) */,
     -- Flags
     is_placeholder      BOOLEAN      NOT NULL DEFAULT FALSE,
     is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
-    _batch_id           VARCHAR(64),
+    batch_id            VARCHAR(64),
     _created_at         TIMESTAMPTZ  DEFAULT NOW(),
     _updated_at         TIMESTAMPTZ  DEFAULT NOW()
 );
@@ -178,9 +178,9 @@ CREATE TABLE IF NOT EXISTS fact.ventas (
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
     -- Quién, qué, quién vendió
-    cod_cliente        VARCHAR(20)  REFERENCES dim.cliente(cod_cliente),
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
-    cod_vendedor       VARCHAR(20)  REFERENCES dim.vendedor(cod_vendedor),
+    cod_cliente        VARCHAR(20)  /* REFERENCES dim.cliente(cod_cliente) */,
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
+    cod_vendedor       VARCHAR(20)  /* REFERENCES dim.vendedor(cod_vendedor) */,
     -- Catálogos
     cod_condicion_pago VARCHAR(20),
     cod_sector         VARCHAR(20),
@@ -243,8 +243,8 @@ CREATE TABLE IF NOT EXISTS fact.cxc (
     cxc_id             BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    cod_cliente        VARCHAR(20)  REFERENCES dim.cliente(cod_cliente),
-    cod_vendedor       VARCHAR(20)  REFERENCES dim.vendedor(cod_vendedor),
+    cod_cliente        VARCHAR(20)  /* REFERENCES dim.cliente(cod_cliente) */,
+    cod_vendedor       VARCHAR(20)  /* REFERENCES dim.vendedor(cod_vendedor) */,
     cod_clase_doc      VARCHAR(20),
     cod_condicion_pago VARCHAR(20),
     cod_moneda         VARCHAR(10),
@@ -280,9 +280,9 @@ CREATE TABLE IF NOT EXISTS fact.entregas (
     entrega_id         BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    cod_cliente        VARCHAR(20)  REFERENCES dim.cliente(cod_cliente),
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
-    cod_vendedor       VARCHAR(20)  REFERENCES dim.vendedor(cod_vendedor),
+    cod_cliente        VARCHAR(20)  /* REFERENCES dim.cliente(cod_cliente) */,
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
+    cod_vendedor       VARCHAR(20)  /* REFERENCES dim.vendedor(cod_vendedor) */,
     cod_moneda         VARCHAR(10),
     num_entrega        VARCHAR(20)  NOT NULL,
     pos_ped            VARCHAR(10)  NOT NULL,
@@ -310,8 +310,8 @@ CREATE TABLE IF NOT EXISTS fact.pedidos (
     pedido_id          BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    cod_cliente        VARCHAR(20)  REFERENCES dim.cliente(cod_cliente),
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
+    cod_cliente        VARCHAR(20)  /* REFERENCES dim.cliente(cod_cliente) */,
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
     cod_moneda         VARCHAR(10),
     es_mes_actual      BOOLEAN      NOT NULL DEFAULT FALSE,
     doc_comer          VARCHAR(30),
@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS fact.inventario (
     inventario_id      BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
     tipo_inv           VARCHAR(15)  NOT NULL,  -- PT | PT_GENERAL | MP
     centro             VARCHAR(20),
     almacen            VARCHAR(20),
@@ -375,8 +375,8 @@ CREATE TABLE IF NOT EXISTS fact.ordenes (
     orden_id           BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
-    cod_clase_orden    VARCHAR(20)  REFERENCES cat.clase_orden(cod),
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
+    cod_clase_orden    VARCHAR(20)  /* REFERENCES cat.clase_orden(cod) */,
     planta             VARCHAR(5)   NOT NULL,  -- PH | HG | PM
     num_orden          VARCHAR(30)  NOT NULL,
     centro             VARCHAR(20),
@@ -406,7 +406,7 @@ CREATE TABLE IF NOT EXISTS fact.consumos (
     consumo_id         BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
     planta             VARCHAR(5)   NOT NULL,  -- PH | HG
     num_orden          VARCHAR(30)  NOT NULL,
     umb                VARCHAR(10),
@@ -436,7 +436,7 @@ CREATE TABLE IF NOT EXISTS fact.notificaciones (
     notif_id           BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
     fecha              DATE         NOT NULL,
     um                 VARCHAR(10),
     sector_texto       VARCHAR(50),
@@ -456,7 +456,7 @@ CREATE TABLE IF NOT EXISTS fact.precios (
     precio_id          BIGSERIAL    PRIMARY KEY,
     line_hash          VARCHAR(32)  NOT NULL UNIQUE,
     batch_id           VARCHAR(64)  NOT NULL,
-    codigo_mat         VARCHAR(30)  REFERENCES dim.producto(codigo_mat),
+    codigo_mat         VARCHAR(30)  /* REFERENCES dim.producto(codigo_mat) */,
     cod_lista_precio   VARCHAR(20),
     cl_cd              VARCHAR(10),
     org_vt             VARCHAR(10),
@@ -471,6 +471,45 @@ CREATE TABLE IF NOT EXISTS fact.precios (
 
 CREATE INDEX IF NOT EXISTS idx_prec_mat    ON fact.precios(codigo_mat);
 CREATE INDEX IF NOT EXISTS idx_prec_valid  ON fact.precios(valido_de, valido_a);
+
+-- ── CUENTAS POR PAGAR (CxP) ──────────────────────────────────
+-- Fuente: AVAC_PH.CSV (análisis de antigüedad proveedores)
+CREATE TABLE IF NOT EXISTS fact.cxp (
+    cxp_id             BIGSERIAL    PRIMARY KEY,
+    line_hash          VARCHAR(32)  NOT NULL UNIQUE,
+    batch_id           VARCHAR(64)  NOT NULL,
+    sociedad           VARCHAR(10),
+    proveedor          VARCHAR(20)  NOT NULL,
+    nombre_proveedor   TEXT,
+    asignacion         VARCHAR(30),
+    referencia         VARCHAR(30),
+    clase_doc          VARCHAR(20),
+    n_documento        VARCHAR(30)  NOT NULL,
+    fecha_doc          DATE,
+    cod_condicion_pago VARCHAR(20),
+    desc_pago          VARCHAR(100),
+    d_venc             SMALLINT,
+    fecha_venc         DATE,
+    cod_moneda         VARCHAR(10),
+    importe_ml         NUMERIC(18,2),
+    por_vencer         NUMERIC(18,2),
+    venc_1_30          NUMERIC(18,2),
+    venc_31_60         NUMERIC(18,2),
+    venc_61_90         NUMERIC(18,2),
+    venc_91_mas        NUMERIC(18,2),
+    importe            NUMERIC(18,2),
+    importe_m          NUMERIC(18,2),
+    cod_ramo           VARCHAR(20),
+    ref_factura        VARCHAR(30),
+    importe_moneda_fuerte NUMERIC(18,2),
+    moneda_fuerte      VARCHAR(10),
+    importe_mf_fecha_doc  NUMERIC(18,2),
+    _loaded_at         TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cxp_prov    ON fact.cxp(proveedor);
+CREATE INDEX IF NOT EXISTS idx_cxp_venc    ON fact.cxp(fecha_venc);
+CREATE INDEX IF NOT EXISTS idx_cxp_doc     ON fact.cxp(n_documento);
 
 -- ══════════════════════════════════════════════════════════════════
 -- RAW — CSV sin transformar (histórico permanente)
@@ -530,6 +569,25 @@ CREATE TABLE IF NOT EXISTS raw.clientes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_raw_c_cod ON raw.clientes(cod_cliente);
+
+-- ── RAW GENÉRICO — Todas las fuentes como JSONB ─────────────────
+-- Reemplaza la necesidad de crear raw.* por cada fuente nueva.
+-- Cada fila guarda el CSV completo como JSONB para auditoría.
+CREATE TABLE IF NOT EXISTS raw.source_data (
+    raw_id         BIGSERIAL    PRIMARY KEY,
+    source_key     VARCHAR(30)  NOT NULL,
+    pk_hash        CHAR(32)     NOT NULL,
+    row_hash       CHAR(32)     NOT NULL,
+    data           JSONB        NOT NULL,
+    source_file    VARCHAR(200),
+    batch_id       VARCHAR(64),
+    loaded_at      TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (source_key, pk_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_sd_source ON raw.source_data(source_key);
+CREATE INDEX IF NOT EXISTS idx_raw_sd_batch  ON raw.source_data(batch_id);
+CREATE INDEX IF NOT EXISTS idx_raw_sd_data   ON raw.source_data USING gin(data);
 
 -- ══════════════════════════════════════════════════════════════════
 -- ETL — Control del pipeline
@@ -674,3 +732,38 @@ SELECT
 FROM fact.inventario i
 LEFT JOIN dim.producto p ON i.codigo_mat = p.codigo_mat
 WHERE i.libre_ut > 0 OR i.calidad > 0;
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- VISTAS PUBLIC (para herramientas BI como Looker Studio)
+-- Looker Studio solo ve schema public por defecto
+-- ══════════════════════════════════════════════════════════════════
+
+-- Fact tables
+CREATE OR REPLACE VIEW public.fact_ventas AS SELECT * FROM fact.ventas;
+CREATE OR REPLACE VIEW public.fact_cxc AS SELECT * FROM fact.cxc;
+CREATE OR REPLACE VIEW public.fact_cxp AS SELECT * FROM fact.cxp;
+CREATE OR REPLACE VIEW public.fact_entregas AS SELECT * FROM fact.entregas;
+CREATE OR REPLACE VIEW public.fact_pedidos AS SELECT * FROM fact.pedidos;
+CREATE OR REPLACE VIEW public.fact_consumos AS SELECT * FROM fact.consumos;
+CREATE OR REPLACE VIEW public.fact_notificaciones AS SELECT * FROM fact.notificaciones;
+CREATE OR REPLACE VIEW public.fact_inventario AS SELECT * FROM fact.inventario;
+CREATE OR REPLACE VIEW public.fact_ordenes AS SELECT * FROM fact.ordenes;
+CREATE OR REPLACE VIEW public.fact_precios AS SELECT * FROM fact.precios;
+
+-- Dimensiones
+CREATE OR REPLACE VIEW public.dim_cliente AS SELECT * FROM dim.cliente;
+CREATE OR REPLACE VIEW public.dim_vendedor AS SELECT * FROM dim.vendedor;
+CREATE OR REPLACE VIEW public.dim_producto AS SELECT * FROM dim.producto;
+
+-- Catálogos
+CREATE OR REPLACE VIEW public.cat_canal AS SELECT * FROM cat.canal;
+CREATE OR REPLACE VIEW public.cat_clase_doc AS SELECT * FROM cat.clase_doc;
+CREATE OR REPLACE VIEW public.cat_clase_orden AS SELECT * FROM cat.clase_orden;
+CREATE OR REPLACE VIEW public.cat_condicion_pago AS SELECT * FROM cat.condicion_pago;
+CREATE OR REPLACE VIEW public.cat_gpo_cliente AS SELECT * FROM cat.gpo_cliente;
+CREATE OR REPLACE VIEW public.cat_grp_vendedor AS SELECT * FROM cat.grp_vendedor;
+CREATE OR REPLACE VIEW public.cat_lista_precio AS SELECT * FROM cat.lista_precio;
+CREATE OR REPLACE VIEW public.cat_ramo AS SELECT * FROM cat.ramo;
+CREATE OR REPLACE VIEW public.cat_sector AS SELECT * FROM cat.sector;
+CREATE OR REPLACE VIEW public.cat_zona_ventas AS SELECT * FROM cat.zona_ventas;

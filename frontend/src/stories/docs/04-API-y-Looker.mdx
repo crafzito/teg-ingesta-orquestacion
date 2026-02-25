@@ -1,0 +1,66 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="01. Documentacion/API y Looker" />
+
+# API Backend y Queries Looker
+
+Fuentes principales: `backend/main.py` y `sql/looker_queries.sql`.
+
+## Endpoints
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| `GET` | `/api/health` | Verifica conectividad con PostgreSQL |
+| `GET` | `/api/schema` | Lista tablas/vistas de `cat`, `dim`, `fact`, `raw`, `etl` |
+| `POST` | `/api/schema/refresh` | Limpia cache interno del schema |
+| `POST` | `/api/query` | Ejecuta query SQL readonly con limite |
+
+## Contratos principales
+
+### QueryRequest
+
+```json
+{
+  "sql": "SELECT * FROM fact.ventas LIMIT 20",
+  "limit": 1000
+}
+```
+
+### QueryResponse
+
+```json
+{
+  "columns": ["fecha_doc", "num_factura", "importe_final"],
+  "rows": [["2026-02-01", "0192670688", 1540.55]],
+  "row_count": 1,
+  "execution_time_ms": 12.8,
+  "truncated": false
+}
+```
+
+## Reglas de seguridad SQL
+
+- Solo permite queries que inicien con `SELECT`, `WITH` o `EXPLAIN`.
+- Bloquea keywords de escritura/DDL (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, etc.).
+- Ejecuta transaccion en modo `READ ONLY`.
+- Limita filas retornadas por request (`limit <= 10000`).
+
+## Queries de Looker Studio
+
+`sql/looker_queries.sql` incluye 5 consultas listas para pegar en "Consulta personalizada":
+
+1. Ventas.
+2. Cobranza / CXC.
+3. Pedidos.
+4. Inventario.
+5. Ordenes de produccion.
+
+Cada query ya incorpora joins a dimensiones/catalogos y columnas derivadas para KPIs.
+
+## Uso rapido con curl
+
+```bash
+curl -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT * FROM fact.ventas LIMIT 5", "limit": 1000}'
+```

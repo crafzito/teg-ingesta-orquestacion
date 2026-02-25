@@ -1,0 +1,61 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="01. Documentacion/Setup y Puesta en Marcha" />
+
+# Setup y Puesta en Marcha
+
+## Requisitos
+
+- Python 3.12+
+- Node.js 18+
+- Docker + Docker Compose
+
+## Instalacion
+
+```bash
+# Desde raiz del repo
+cp .env.example .env
+pip install -r requirements.txt
+cd frontend && npm install && cd ..
+```
+
+## Levantar servicios
+
+```bash
+# 1) Base de datos
+docker-compose up -d
+
+# 2) Backend API
+uvicorn backend.main:app --reload --port 8000
+
+# 3) Frontend
+cd frontend
+npm run dev
+```
+
+## Storybook (documentacion UI)
+
+```bash
+cd frontend
+npm run storybook
+```
+
+Compilacion estatica para CI:
+
+```bash
+cd frontend
+npm run build-storybook
+```
+
+## Checklist de validacion
+
+1. `http://localhost:5173` responde (frontend).
+2. `http://localhost:8000/api/health` responde `{"status":"ok"}`.
+3. `http://localhost:6006` abre Storybook.
+4. Stories de `SqlEditor`, `ResultsTable`, `SchemaPanel`, `QueryPresets` renderizan sin errores.
+
+## Troubleshooting rapido
+
+- Error de conexion DB: revisar `docker-compose ps` y credenciales en `.env`.
+- Error CORS/API: confirmar backend en puerto `8000` y proxy de Vite.
+- Storybook sin estilos: verificar import global en `.storybook/preview.ts`.

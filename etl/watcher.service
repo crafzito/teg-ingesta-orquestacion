@@ -1,0 +1,20 @@
+[Unit]
+Description=SAP ETL File Watcher
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=etl
+Group=etl
+WorkingDirectory=/opt/etl
+Environment=PG_DSN=host=localhost dbname=sap_etl user=postgres password=postgres
+Environment=SAP_CSV_DIR=/datos/sap/csvs
+ExecStart=/usr/bin/python3 /opt/etl/etl/watcher.py --dir /datos/sap/csvs --debounce 180
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sap-etl-watcher
+
+[Install]
+WantedBy=multi-user.target

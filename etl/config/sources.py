@@ -381,6 +381,25 @@ SOURCES = {
             "Texto",
         },
     },
+
+    # ────────────────────────────────────────────────────────────
+    # CxP — AVAC_PH.CSV (Cuentas por Pagar)
+    # PK: Nº doc. + Proveedor + Clase Doc + Asignacion + Mon.
+    # ────────────────────────────────────────────────────────────
+    "AVAC": {
+        "file":       "AVAC_PH.CSV",
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "cxp"),
+        "pk_cols":    ["Nº doc.", "Proveedor", "Clase Doc", "Asignacion", "Mon."],
+        "upsert_mode":"merge",
+        "drop_cols": {
+            "Denominación",
+            "Descr.Ramo",
+            "Txt.cabec.",
+            "Gr.tes.",
+        },
+    },
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -437,6 +456,10 @@ PRODUCTO_SOURCES = [
         "Gr.Material":          "gr_material",
         "Gr.Articulo":          "gr_articulo",
     }),
+    ("INVMP", {
+        "Codigo_Mat":           "codigo_mat",
+        "Denominacion Material":"denominacion_material",
+    }),
 ]
 
 # Orden en que se procesan las fuentes de hechos
@@ -444,6 +467,7 @@ PRODUCTO_SOURCES = [
 FACT_LOAD_ORDER = [
     "PHXX",
     "AVPH",
+    "AVAC",
     "NEXFAC",
     "PEDIDOSFULL",
     "PEDIDOS",

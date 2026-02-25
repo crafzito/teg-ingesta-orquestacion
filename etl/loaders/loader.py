@@ -258,13 +258,27 @@ def _merge(conn, table: str, rows: List[Dict], pk_columns: List[str]) -> Dict:
         {where_clause}
     """
 
-    values = [[r.get(c) for c in cols] for r in rows]
+    # Deduplicar por conflict_target para evitar "cannot affect row a second time"
+    ct_cols = [c.strip() for c in conflict_target.split(",")]
+    ct_idxs = [cols.index(c) for c in ct_cols if c in cols]
+    seen = set()
+    values = []
+    for r in rows:
+        vals = [r.get(c) for c in cols]
+        key = tuple(vals[i] for i in ct_idxs) if ct_idxs else None
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        values.append(vals)
+
+    dupes = len(rows) - len(values)
 
     with conn.cursor() as cur:
         psycopg2.extras.execute_values(cur, sql, values, page_size=500)
         affected = cur.rowcount
 
-    return {"inserted": affected, "updated": 0, "skipped": len(rows) - affected}
+    return {"inserted": affected, "updated": 0, "skipped": len(values) - affected + dupes}
 
 
 def _merge_via_line_hash(
@@ -295,9 +309,22 @@ def _merge_via_line_hash(
         ON CONFLICT (line_hash) DO NOTHING
     """
 
-    values = [[r.get(c) for c in cols] for r in rows]
+    # Deduplicar por line_hash (SAP puede exportar filas duplicadas)
+    lh_idx = cols.index("line_hash") if "line_hash" in cols else None
+    seen_hashes = set()
+    deduped = []
+    for r in rows:
+        vals = [r.get(c) for c in cols]
+        if lh_idx is not None:
+            lh = vals[lh_idx]
+            if lh in seen_hashes:
+                continue
+            seen_hashes.add(lh)
+        deduped.append(vals)
+
+    values = deduped
     inserted = 0
-    skipped  = 0
+    skipped  = len(rows) - len(values)  # duplicados internos
 
     # Procesar en batches para medir insertes vs skips
     BATCH = 500
@@ -347,7 +374,13 @@ def upsert_catalog_v2(
 def read_csv(filepath: str, encoding: str = "latin-1", delimiter: str = ";"):
     """
     Generador: lee el CSV fila por fila como dict.
-    Maneja BOM, encoding errors, headers duplicados.
+    Maneja BOM, encoding errors, headers duplicados, filas defectuosas.
+
+    Protecciones:
+      - BOM al inicio del archivo
+      - Keys None (más campos que headers → separadores extra)
+      - Keys vacías después de strip
+      - restkey de DictReader (campos excedentes)
     """
     import csv
 
@@ -361,6 +394,13 @@ def read_csv(filepath: str, encoding: str = "latin-1", delimiter: str = ";"):
 
         reader = csv.DictReader(f, delimiter=delimiter)
         for row in reader:
-            # Limpiar keys: algunos headers de SAP tienen espacios extra
-            cleaned = {(k or "").strip(): v for k, v in row.items()}
+            # Limpiar keys y filtrar None/vacías (filas con separadores extra)
+            cleaned = {}
+            for k, v in row.items():
+                if k is None:
+                    # DictReader pone campos excedentes en key=None como lista
+                    continue
+                key = k.strip()
+                if key:
+                    cleaned[key] = v
             yield cleaned

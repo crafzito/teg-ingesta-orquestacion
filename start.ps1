@@ -11,7 +11,6 @@
 # Prerequisitos:
 #   - Docker Desktop instalado y corriendo
 #   - Python 3.11+ en PATH
-#   - psql en PATH (viene con PostgreSQL o pgAdmin)
 # ============================================================
 
 param(
@@ -122,10 +121,9 @@ if (-not $SkipDocker) {
 # ============================================================
 Write-Step "Verificando base de datos '$DB_NAME'"
 
-$env:PGPASSWORD = $DB_PASS
-$dbExists = psql -h $DB_HOST -p $DB_PORT -U $DB_USER -lqt 2>&1 | Select-String $DB_NAME
+$dbExists = docker exec sap_etl_postgres psql -U $DB_USER -lqt 2>&1 | Select-String $DB_NAME
 if (-not $dbExists) {
-    psql -h $DB_HOST -p $DB_PORT -U $DB_USER -c "CREATE DATABASE $DB_NAME" postgres 2>&1 | Out-Null
+    docker exec sap_etl_postgres psql -U $DB_USER -c "CREATE DATABASE $DB_NAME" postgres 2>&1 | Out-Null
     Write-Ok "Base de datos '$DB_NAME' creada"
 } else {
     Write-Ok "Base de datos '$DB_NAME' ya existe"
@@ -141,7 +139,8 @@ if (-not $SkipSchema) {
         Write-Fail "No se encontro sql/schema.sql"
         exit 1
     }
-    psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f $schemaFile 2>&1 | Out-Null
+    docker cp $schemaFile sap_etl_postgres:/tmp/schema.sql
+    docker exec sap_etl_postgres psql -U $DB_USER -d $DB_NAME -f /tmp/schema.sql 2>&1 | Out-Null
     Write-Ok "Schema aplicado (schemas: cat, dim, fact, raw, etl)"
 } else {
     Write-Warn "Schema omitido (-SkipSchema)"
@@ -158,8 +157,15 @@ if (-not (Test-Path $venv)) {
     Write-Ok "Virtualenv creado en .venv/"
 }
 
-$pip = Join-Path $venv "Scripts\pip.exe"
-& $pip install -r (Join-Path $Root "requirements.txt") --quiet
+$python = Join-Path $venv "Scripts\python.exe"
+if (-not (Test-Path $python)) {
+    Write-Fail "Python no encontrado en el entorno virtual. Recreando..."
+    Remove-Item $venv -Recurse -Force -ErrorAction SilentlyContinue
+    python -m venv $venv
+    $python = Join-Path $venv "Scripts\python.exe"
+}
+
+& $python -m pip install -r (Join-Path $Root "requirements.txt") --quiet
 Write-Ok "Dependencias instaladas"
 
 # ============================================================
@@ -167,7 +173,6 @@ Write-Ok "Dependencias instaladas"
 # ============================================================
 if ($ETL) {
     Write-Step "Ejecutando ETL pipeline (--dir $CsvDir)"
-    $python = Join-Path $venv "Scripts\python.exe"
     $csvPath = Join-Path $Root $CsvDir
 
     if (-not (Test-Path $csvPath)) {
@@ -205,5 +210,4 @@ Write-Host "  Presiona Ctrl+C para detener el servidor." -ForegroundColor DarkGr
 Write-Host ""
 
 Set-Location $Root
-$python = Join-Path $venv "Scripts\python.exe"
 & $python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000

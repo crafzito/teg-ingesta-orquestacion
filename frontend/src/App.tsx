@@ -1,61 +1,41 @@
-import { useState, useCallback } from "react";
-import { SqlEditor } from "./components/SqlEditor";
-import { ResultsTable } from "./components/ResultsTable";
-import { SchemaPanel } from "./components/SchemaPanel";
-import { QueryPresets } from "./components/QueryPresets";
-import { executeQuery } from "./api";
-import type { QueryResponse } from "./types";
-import "./App.css";
+import { useState, useEffect } from 'react'
+import type { Page } from './types'
+import { checkHealth } from './api'
+import Sidebar from './components/Layout/Sidebar'
+import Header from './components/Layout/Header'
+import Dashboard from './pages/Dashboard'
+import ViewsPage from './pages/ViewsPage'
+import GuidePage from './pages/GuidePage'
+import SqlExplorer from './pages/SqlExplorer'
+import ExportPage from './pages/ExportPage'
 
 export default function App() {
-  const [result, setResult] = useState<QueryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [editorSql, setEditorSql] = useState<string | null>(null);
+  const [page, setPage] = useState<Page>('dashboard')
+  const [healthy, setHealthy] = useState<boolean | null>(null)
 
-  const handleExecute = useCallback(async (sql: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await executeQuery(sql);
-      setResult(res);
-    } catch (e: unknown) {
-      setResult(null);
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  useEffect(() => {
+    checkHealth()
+      .then(() => setHealthy(true))
+      .catch(() => setHealthy(false))
+  }, [])
 
-  const handleTableClick = useCallback((tableName: string) => {
-    setEditorSql(`SELECT * FROM ${tableName} LIMIT 50;`);
-  }, []);
-
-  const handlePresetSelect = useCallback((sql: string) => {
-    setEditorSql(sql);
-  }, []);
+  const pageComponents: Record<Page, React.ReactNode> = {
+    dashboard: <Dashboard onNavigate={setPage} healthy={healthy} />,
+    views: <ViewsPage />,
+    guide: <GuidePage />,
+    sql: <SqlExplorer />,
+    export: <ExportPage />,
+  }
 
   return (
-    <div className="app">
-      <header>
-        <h1>TEG SQL Explorer</h1>
-        <span className="subtitle">Validacion ETL</span>
-      </header>
-      <div className="main-layout">
-        <aside>
-          <SchemaPanel onTableClick={handleTableClick} />
-          <QueryPresets onSelect={handlePresetSelect} />
-        </aside>
-        <main>
-          <SqlEditor
-            onExecute={handleExecute}
-            isLoading={isLoading}
-            externalSql={editorSql}
-            onExternalSqlConsumed={() => setEditorSql(null)}
-          />
-          <ResultsTable result={result} error={error} />
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      <Sidebar current={page} onNavigate={setPage} healthy={healthy} />
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <Header page={page} healthy={healthy} />
+        <main className="flex-1 overflow-y-auto p-6">
+          {pageComponents[page]}
         </main>
       </div>
     </div>
-  );
+  )
 }

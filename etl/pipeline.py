@@ -656,9 +656,43 @@ def run(
     if not skip_raw:
         load_raw(data_dir, dry_run)
 
+    # Refrescar vistas materializadas para que Looker vea data actualizada
+    if not dry_run:
+        refresh_materialized_views()
+
     logger.info("=" * 60)
     logger.info("Pipeline completado.")
     logger.info("=" * 60)
+
+
+# ──────────────────────────────────────────────────────────────────
+# Refresh vistas materializadas (Looker Studio)
+# ──────────────────────────────────────────────────────────────────
+
+_MATERIALIZED_VIEWS = [
+    "public.v_ventas",
+    "public.v_cxc",
+    "public.v_cxp",
+    "public.v_inventario",
+    "public.v_ordenes",
+    "public.v_pedidos",
+]
+
+
+def refresh_materialized_views():
+    """Refresca todas las vistas materializadas en public para que
+    Looker Studio vea la data actualizada sin JOINs en tiempo real."""
+    logger.info("── Refrescando vistas materializadas ──────────────")
+    with get_connection(DSN) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            for mv in _MATERIALIZED_VIEWS:
+                try:
+                    cur.execute(f"REFRESH MATERIALIZED VIEW {mv}")
+                    logger.info(f"  {mv} ✓")
+                except Exception as e:
+                    logger.warning(f"  {mv} FALLÓ: {e}")
+        conn.autocommit = False
 
 
 def reset_file_hash(source_key: str):

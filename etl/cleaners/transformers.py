@@ -262,7 +262,9 @@ transform_pedidos_mes  = _make_transform_pedidos(es_mes_actual=True, source_key=
 # INVENTARIO — INVPT_XX + INVPT_XXGENERAL + INVMP_XX → fact.inventario
 # tipo_inv se inyecta desde el pipeline
 # ────────────────────────────────────────────────────────────────
-def _make_transform_inventario(tipo_inv: str, source_key: str):
+def _make_transform_inventario(tipo_inv: str, source_key: str,
+                               has_valores: bool = False):
+    """has_valores=True para fuentes que traen Valor_Lut, Valor_Cal, Valor_Blo."""
     def transform(raw: Dict) -> TransformResult:
         SK = source_key
         codigo_mat = normalize_code(_g(raw, SK, "Codigo_Mat"))
@@ -283,13 +285,13 @@ def _make_transform_inventario(tipo_inv: str, source_key: str):
             "desc_almacen":  normalize_text(_g(raw, SK, "TextAlm")),
             "desc_centro":   normalize_text(_g(raw, SK, "TextCent")),
             "cb":            normalize_code(_g(raw, SK, "C-B")),
-            "tp_mt":         normalize_code(_g(raw, SK, "TpMt")) if source_key == "INVMP" else None,
+            "tp_mt":         normalize_code(_g(raw, SK, "TpMt")) if has_valores else None,
             "libre_ut":      parse_decimal(_g(raw, SK, "LibreUt", "0")),
             "calidad":       parse_decimal(_g(raw, SK, "Calidad", "0")),
             "bloqueado":     parse_decimal(_g(raw, SK, "Bloqueado", "0")),
-            "valor_libre":   parse_decimal(_g(raw, SK, "Valor_Lut", "0")) if source_key == "INVMP" else 0,
-            "valor_calidad": parse_decimal(_g(raw, SK, "Valor_Cal", "0")) if source_key == "INVMP" else 0,
-            "valor_bloqueado":parse_decimal(_g(raw, SK, "Valor_Blo", "0")) if source_key == "INVMP" else 0,
+            "valor_libre":   parse_decimal(_g(raw, SK, "Valor_Lut", "0")) if has_valores else 0,
+            "valor_calidad": parse_decimal(_g(raw, SK, "Valor_Cal", "0")) if has_valores else 0,
+            "valor_bloqueado":parse_decimal(_g(raw, SK, "Valor_Blo", "0")) if has_valores else 0,
             "hora_snapshot": None,
         }
 
@@ -299,7 +301,8 @@ def _make_transform_inventario(tipo_inv: str, source_key: str):
 
 transform_invpt         = _make_transform_inventario("PT", "INVPT")
 transform_invpt_general = _make_transform_inventario("PT_GENERAL", "INVPT_GENERAL")
-transform_invmp         = _make_transform_inventario("MP", "INVMP")
+transform_invmp         = _make_transform_inventario("MP", "INVMP", has_valores=True)
+transform_inventarios   = _make_transform_inventario("PT_VALORIZADO", "INVENTARIOS", has_valores=True)
 
 
 # ────────────────────────────────────────────────────────────────
@@ -664,6 +667,7 @@ TRANSFORMER_MAP = {
     "INVPT":         transform_invpt,
     "INVPT_GENERAL": transform_invpt_general,
     "INVMP":         transform_invmp,
+    "INVENTARIOS":   transform_inventarios,
     "O_PH":          transform_ordenes_ph,
     "O_HG":          transform_ordenes_hg,
     "O_PM":          transform_ordenes_pm,

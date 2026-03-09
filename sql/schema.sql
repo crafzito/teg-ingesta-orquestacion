@@ -166,6 +166,48 @@ CREATE INDEX IF NOT EXISTS idx_cli_vend   ON dim.cliente(cod_vendedor);
 CREATE INDEX IF NOT EXISTS idx_cli_estado ON dim.cliente(estado);
 CREATE INDEX IF NOT EXISTS idx_cli_active ON dim.cliente(is_active) WHERE is_active = TRUE;
 
+-- ── SOCIEDAD ────────────────────────────────────────────────────
+-- Entidad legal SAP. Cargada por ETL desde TextCent.
+-- tipo_prod: CONSUMO = producto terminado para consumidor
+--            EMPAQUE = componentes de empaque (tapas, botellas, preformas)
+CREATE TABLE IF NOT EXISTS dim.sociedad (
+    sociedad    VARCHAR(10)  PRIMARY KEY,
+    nombre      VARCHAR(100) NOT NULL,
+    tipo_prod   VARCHAR(10)  NOT NULL CHECK (tipo_prod IN ('CONSUMO', 'EMPAQUE')),
+    _created_at TIMESTAMPTZ  DEFAULT NOW(),
+    _updated_at TIMESTAMPTZ  DEFAULT NOW()
+);
+
+-- Seed: datos base conocidos (el ETL los actualiza vía UPSERT si TextCent cambia)
+INSERT INTO dim.sociedad (sociedad, nombre, tipo_prod) VALUES
+    ('1000', 'Pharsana',       'CONSUMO'),
+    ('1200', 'Ampofrasca',     'EMPAQUE'),
+    ('1300', 'Proyectos PET',  'EMPAQUE')
+ON CONFLICT (sociedad) DO NOTHING;
+
+-- ── CENTRO ──────────────────────────────────────────────────────
+-- Planta/establecimiento SAP. Siempre hijo de una sociedad.
+-- Regla de derivación: sociedad = floor(centro::int / 100) * 100
+CREATE TABLE IF NOT EXISTS dim.centro (
+    centro      VARCHAR(20)  PRIMARY KEY,
+    nombre      VARCHAR(100) NOT NULL,
+    sociedad    VARCHAR(10)  NOT NULL REFERENCES dim.sociedad(sociedad),
+    tipo_prod   VARCHAR(10)  NOT NULL,  -- heredado de sociedad
+    _created_at TIMESTAMPTZ  DEFAULT NOW(),
+    _updated_at TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_centro_soc ON dim.centro(sociedad);
+
+-- Seed: datos base derivados de TextCent en INVPT_XXGENERAL / INVMP_XX
+INSERT INTO dim.centro (centro, nombre, sociedad, tipo_prod) VALUES
+    ('1000', 'Pharsana Valencia',  '1000', 'CONSUMO'),
+    ('1001', 'Pharsana Maracay',   '1000', 'CONSUMO'),
+    ('1002', 'Pharsana Higienico', '1000', 'CONSUMO'),
+    ('1200', 'Ampofrasca',         '1200', 'EMPAQUE'),
+    ('1300', 'Proyectos PET',      '1300', 'EMPAQUE')
+ON CONFLICT (centro) DO NOTHING;
+
 -- ══════════════════════════════════════════════════════════════════
 -- HECHOS
 -- Estructura estándar: id + line_hash + batch_id + FKs + métricas
@@ -650,6 +692,10 @@ SELECT
     v.ejercicio,
     v.mes,
     v.num_factura,
+    -- Sociedad
+    s.sociedad,
+    s.nombre                        AS sociedad_nombre,
+    s.tipo_prod,
     -- Cliente
     c.cod_cliente,
     c.nombre_cliente,
@@ -678,6 +724,7 @@ SELECT
     v.canal_texto,
     v._loaded_at
 FROM fact.ventas v
+LEFT JOIN dim.sociedad s  ON v.org_vtas     = s.sociedad
 LEFT JOIN dim.cliente  c  ON v.cod_cliente  = c.cod_cliente
 LEFT JOIN dim.producto p  ON v.codigo_mat   = p.codigo_mat
 LEFT JOIN dim.vendedor vd ON v.cod_vendedor = vd.cod_vendedor
@@ -689,6 +736,10 @@ CREATE OR REPLACE VIEW fact.v_cxc_full AS
 SELECT
     cx.fecha_venc,
     cx.n_documento,
+    -- Sociedad
+    s.sociedad,
+    s.nombre                AS sociedad_nombre,
+    -- Cliente
     c.cod_cliente,
     c.nombre_cliente,
     c.rif                   AS rif_cliente,
@@ -703,67 +754,372 @@ SELECT
     cx.venc_61_90,
     cx.venc_91_mas,
     cx.importe_md           AS total_usd,
-    -- Deuda total vencida
     COALESCE(cx.venc_1_15,0) + COALESCE(cx.venc_16_30,0) +
     COALESCE(cx.venc_31_60,0) + COALESCE(cx.venc_61_90,0) +
     COALESCE(cx.venc_91_mas,0)  AS total_vencido_usd
 FROM fact.cxc cx
+LEFT JOIN dim.sociedad  s  ON cx.sociedad      = s.sociedad
 LEFT JOIN dim.cliente   c  ON cx.cod_cliente   = c.cod_cliente
 LEFT JOIN dim.vendedor  vd ON cx.cod_vendedor  = vd.cod_vendedor
 LEFT JOIN cat.zona_ventas zv ON c.cod_zona_ventas = zv.cod
 LEFT JOIN cat.clase_doc   cd ON cx.cod_clase_doc  = cd.cod;
 
--- Inventario disponible (solo stock libre)
+-- Inventario disponible (solo stock con movimiento)
 CREATE OR REPLACE VIEW fact.v_inventario_disponible AS
 SELECT
     i.tipo_inv,
-    i.centro,
+    -- Centro y sociedad
+    ce.centro,
+    ce.nombre                          AS centro_nombre,
+    s.sociedad,
+    s.nombre                           AS sociedad_nombre,
+    s.tipo_prod,
     i.almacen,
+    -- Producto
     p.codigo_mat,
-    p.denominacion_material AS producto,
+    p.denominacion_material            AS producto,
     p.categoria,
     p.marca,
+    -- Stock
     i.libre_ut,
     i.calidad,
     i.bloqueado,
     i.libre_ut + COALESCE(i.calidad, 0) AS total_disponible,
+    -- Solo MP
+    i.valor_libre,
+    i.valor_calidad,
+    i.valor_bloqueado,
     i.hora_snapshot,
     i._loaded_at
 FROM fact.inventario i
-LEFT JOIN dim.producto p ON i.codigo_mat = p.codigo_mat
+LEFT JOIN dim.centro   ce ON i.centro      = ce.centro
+LEFT JOIN dim.sociedad s  ON ce.sociedad   = s.sociedad
+LEFT JOIN dim.producto p  ON i.codigo_mat  = p.codigo_mat
 WHERE i.libre_ut > 0 OR i.calidad > 0;
 
 
 -- ══════════════════════════════════════════════════════════════════
--- VISTAS PUBLIC (para herramientas BI como Looker Studio)
--- Looker Studio solo ve schema public por defecto
+-- REPORTING — Vistas planas para Looker Studio
+-- Una vista por tema = una fuente de datos en Looker.
+-- Cada vista ya trae sociedad, centro y todos los nombres resueltos.
+-- Conectar en Looker directamente desde public.v_* (ver más abajo).
+-- ══════════════════════════════════════════════════════════════════
+CREATE SCHEMA IF NOT EXISTS reporting;
+
+-- ── reporting.v_ventas ──────────────────────────────────────────
+-- Filtros Looker: sociedad_nombre, tipo_prod, zona_ventas, canal_texto,
+--   sector, marca, categoria, ejercicio, mes, status_anulacion
+-- Métricas: monto_bs, monto_usd, iva, iva_usd, cantidad_umv, peso_fact
+CREATE OR REPLACE VIEW reporting.v_ventas AS
+SELECT
+    -- Claves de negocio (para drill-down)
+    v.num_factura,
+    v.fecha_doc,
+    v.ejercicio,
+    v.mes,
+    v.status_anulacion,
+    -- Sociedad
+    s.sociedad,
+    s.nombre                        AS sociedad_nombre,
+    s.tipo_prod,
+    -- Cliente
+    v.cod_cliente,
+    c.nombre_cliente,
+    c.rif                           AS rif_cliente,
+    c.estado,
+    zv.descripcion                  AS zona_ventas,
+    r.descripcion                   AS ramo,
+    gp.descripcion                  AS gpo_cliente,
+    -- Producto
+    v.codigo_mat,
+    p.denominacion_material         AS producto,
+    p.categoria,
+    p.marca,
+    p.jerarquia_1,
+    p.jerarquia_2,
+    -- Vendedor
+    v.cod_vendedor,
+    vd.nombre_vendedor,
+    -- Transacción
+    v.canal_texto,
+    v.cod_moneda,
+    v.almacen,
+    -- Métricas VES
+    v.cantidad_umv,
+    v.um_vtas,
+    v.prec_unitario,
+    v.monto_neto,
+    v.iva,
+    v.importe_final                 AS monto_bs,
+    -- Métricas USD
+    v.tipo_cambio,
+    v.prec_unitario_usd,
+    v.monto_neto_usd,
+    v.iva_usd,
+    v.importe_final_usd             AS monto_usd,
+    -- Peso
+    v.peso_fact,
+    v.um_peso
+FROM fact.ventas v
+LEFT JOIN dim.sociedad    s   ON v.org_vtas        = s.sociedad
+LEFT JOIN dim.cliente     c   ON v.cod_cliente     = c.cod_cliente
+LEFT JOIN dim.producto    p   ON v.codigo_mat      = p.codigo_mat
+LEFT JOIN dim.vendedor    vd  ON v.cod_vendedor    = vd.cod_vendedor
+LEFT JOIN cat.zona_ventas zv  ON c.cod_zona_ventas = zv.cod
+LEFT JOIN cat.ramo        r   ON c.cod_ramo        = r.cod
+LEFT JOIN cat.gpo_cliente gp  ON c.cod_gpo_cliente = gp.cod;
+
+-- ── reporting.v_cxc ─────────────────────────────────────────────
+-- Filtros Looker: sociedad_nombre, zona_ventas, ramo, fecha_venc
+-- Métricas: valor_monetario, tramos de aging, total_vencido_usd
+CREATE OR REPLACE VIEW reporting.v_cxc AS
+SELECT
+    cx.n_documento,
+    cx.fecha_doc,
+    cx.fecha_venc,
+    cx.d_venc,
+    -- Sociedad
+    s.sociedad,
+    s.nombre                AS sociedad_nombre,
+    -- Cliente
+    cx.cod_cliente,
+    c.nombre_cliente,
+    c.rif                   AS rif_cliente,
+    c.estado,
+    zv.descripcion          AS zona_ventas,
+    r.descripcion           AS ramo,
+    -- Vendedor
+    vd.nombre_vendedor,
+    -- Documento
+    cd.descripcion          AS clase_doc,
+    cx.asignacion,
+    cx.cod_moneda,
+    cp.descripcion          AS condicion_pago,
+    -- Aging VES
+    cx.valor_monetario,
+    cx.no_vencido,
+    cx.venc_1_15,
+    cx.venc_16_30,
+    cx.venc_31_60,
+    cx.venc_61_90,
+    cx.venc_91_mas,
+    COALESCE(cx.venc_1_15,0) + COALESCE(cx.venc_16_30,0) +
+    COALESCE(cx.venc_31_60,0) + COALESCE(cx.venc_61_90,0) +
+    COALESCE(cx.venc_91_mas,0)  AS total_vencido,
+    -- USD
+    cx.tc_conversion,
+    cx.importe_ml,
+    cx.importe_md           AS total_usd
+FROM fact.cxc cx
+LEFT JOIN dim.sociedad    s   ON cx.sociedad        = s.sociedad
+LEFT JOIN dim.cliente     c   ON cx.cod_cliente     = c.cod_cliente
+LEFT JOIN dim.vendedor    vd  ON cx.cod_vendedor    = vd.cod_vendedor
+LEFT JOIN cat.zona_ventas zv  ON c.cod_zona_ventas  = zv.cod
+LEFT JOIN cat.ramo        r   ON c.cod_ramo         = r.cod
+LEFT JOIN cat.clase_doc   cd  ON cx.cod_clase_doc   = cd.cod
+LEFT JOIN cat.condicion_pago cp ON cx.cod_condicion_pago = cp.cod;
+
+-- ── reporting.v_cxp ─────────────────────────────────────────────
+-- Filtros Looker: sociedad_nombre, tipo_prod, clase_doc, fecha_venc
+-- Métricas: importe_ml, tramos aging, importe_moneda_fuerte
+CREATE OR REPLACE VIEW reporting.v_cxp AS
+SELECT
+    cx.n_documento,
+    cx.fecha_doc,
+    cx.fecha_venc,
+    cx.d_venc,
+    -- Sociedad
+    s.sociedad,
+    s.nombre                    AS sociedad_nombre,
+    s.tipo_prod,
+    -- Proveedor
+    cx.proveedor,
+    cx.nombre_proveedor,
+    cx.referencia,
+    cx.clase_doc,
+    cx.cod_moneda,
+    cp.descripcion              AS condicion_pago,
+    -- Aging
+    cx.importe_ml,
+    cx.por_vencer,
+    cx.venc_1_30,
+    cx.venc_31_60,
+    cx.venc_61_90,
+    cx.venc_91_mas,
+    cx.importe,
+    -- Moneda fuerte
+    cx.importe_moneda_fuerte,
+    cx.moneda_fuerte,
+    cx.importe_mf_fecha_doc
+FROM fact.cxp cx
+LEFT JOIN dim.sociedad       s  ON cx.sociedad           = s.sociedad
+LEFT JOIN cat.condicion_pago cp ON cx.cod_condicion_pago = cp.cod;
+
+-- ── reporting.v_inventario ──────────────────────────────────────
+-- Filtros Looker: sociedad_nombre, tipo_prod, centro_nombre,
+--   tipo_inv, categoria, marca
+-- Métricas: libre_ut, calidad, bloqueado, valor_libre, valor_bloqueado
+CREATE OR REPLACE VIEW reporting.v_inventario AS
+SELECT
+    -- Centro y sociedad
+    ce.centro,
+    ce.nombre                          AS centro_nombre,
+    s.sociedad,
+    s.nombre                           AS sociedad_nombre,
+    s.tipo_prod,
+    -- Almacén
+    i.almacen,
+    i.desc_almacen,
+    i.tipo_inv,
+    -- Producto
+    i.codigo_mat,
+    p.denominacion_material            AS producto,
+    p.categoria,
+    p.marca,
+    p.jerarquia_1,
+    -- Stock
+    i.cb                               AS unidad,
+    i.libre_ut,
+    i.calidad,
+    i.bloqueado,
+    i.libre_ut + COALESCE(i.calidad,0) AS total_disponible,
+    -- Valorizado (solo MP)
+    i.valor_libre,
+    i.valor_calidad,
+    i.valor_bloqueado,
+    i.tp_mt,
+    i.hora_snapshot
+FROM fact.inventario i
+LEFT JOIN dim.centro   ce ON i.centro     = ce.centro
+LEFT JOIN dim.sociedad s  ON ce.sociedad  = s.sociedad
+LEFT JOIN dim.producto p  ON i.codigo_mat = p.codigo_mat;
+
+-- ── reporting.v_ordenes ─────────────────────────────────────────
+-- Filtros Looker: sociedad_nombre, tipo_prod, centro_nombre,
+--   estatus, clase_orden, fechas
+-- Métricas: cantidad_orden, cantidad_recibida, avance_pct
+CREATE OR REPLACE VIEW reporting.v_ordenes AS
+SELECT
+    o.num_orden,
+    o.planta,
+    -- Centro y sociedad
+    ce.centro,
+    ce.nombre                           AS centro_nombre,
+    s.sociedad,
+    s.nombre                            AS sociedad_nombre,
+    s.tipo_prod,
+    -- Orden
+    co.descripcion                      AS clase_orden,
+    o.estatus,
+    o.reproceso,
+    o.maquina,
+    -- Producto
+    o.codigo_mat,
+    p.denominacion_material             AS producto,
+    p.categoria,
+    p.marca,
+    -- Fechas
+    o.fecha_ini_extrema,
+    o.fecha_fin_extrema,
+    o.fecha_ini_real,
+    o.fecha_fin_real,
+    o.fecha_liberacion,
+    -- Métricas
+    o.cantidad_orden,
+    o.cantidad_recibida,
+    o.um_orden,
+    CASE WHEN COALESCE(o.cantidad_orden,0) > 0
+         THEN ROUND(o.cantidad_recibida / o.cantidad_orden * 100, 2)
+         ELSE 0 END                     AS avance_pct
+FROM fact.ordenes o
+LEFT JOIN dim.centro    ce ON o.centro          = ce.centro
+LEFT JOIN dim.sociedad  s  ON ce.sociedad       = s.sociedad
+LEFT JOIN dim.producto  p  ON o.codigo_mat      = p.codigo_mat
+LEFT JOIN cat.clase_orden co ON o.cod_clase_orden = co.cod;
+
+-- ── reporting.v_pedidos ─────────────────────────────────────────
+-- Filtros Looker: es_mes_actual, status, clase_vt, cod_moneda
+-- Métricas: ctd_conf, ctd_ped, valor_neto
+CREATE OR REPLACE VIEW reporting.v_pedidos AS
+SELECT
+    pd.num_pedido,
+    pd.doc_comer,
+    pd.es_mes_actual,
+    pd.status,
+    pd.clase_vt,
+    pd.almacen,
+    pd.cod_moneda,
+    -- Fechas
+    pd.fecha_doc,
+    pd.fe_entrega,
+    pd.fe_precio,
+    pd.creado_el,
+    pd.fe_ped_app,
+    -- Cliente
+    pd.cod_cliente,
+    c.nombre_cliente,
+    c.estado,
+    zv.descripcion                      AS zona_ventas,
+    -- Producto
+    pd.codigo_mat,
+    p.denominacion_material             AS producto,
+    p.categoria,
+    p.marca,
+    -- Métricas
+    pd.ctd_ped,
+    pd.ctd_conf,
+    pd.tp_cambio,
+    pd.prc_neto,
+    pd.valor_neto,
+    pd.neto
+FROM fact.pedidos pd
+LEFT JOIN dim.cliente     c  ON pd.cod_cliente     = c.cod_cliente
+LEFT JOIN dim.producto    p  ON pd.codigo_mat      = p.codigo_mat
+LEFT JOIN cat.zona_ventas zv ON c.cod_zona_ventas  = zv.cod;
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- VISTAS PUBLIC (para Looker Studio — expone todo via schema public)
+-- Looker Studio solo ve schema public por defecto.
+-- Uso recomendado: conectar public.v_* (ya traen todo resuelto).
+-- Facts crudas disponibles para debug o queries avanzadas.
 -- ══════════════════════════════════════════════════════════════════
 
--- Fact tables
-CREATE OR REPLACE VIEW public.fact_ventas AS SELECT * FROM fact.ventas;
-CREATE OR REPLACE VIEW public.fact_cxc AS SELECT * FROM fact.cxc;
-CREATE OR REPLACE VIEW public.fact_cxp AS SELECT * FROM fact.cxp;
-CREATE OR REPLACE VIEW public.fact_entregas AS SELECT * FROM fact.entregas;
-CREATE OR REPLACE VIEW public.fact_pedidos AS SELECT * FROM fact.pedidos;
-CREATE OR REPLACE VIEW public.fact_consumos AS SELECT * FROM fact.consumos;
-CREATE OR REPLACE VIEW public.fact_notificaciones AS SELECT * FROM fact.notificaciones;
-CREATE OR REPLACE VIEW public.fact_inventario AS SELECT * FROM fact.inventario;
-CREATE OR REPLACE VIEW public.fact_ordenes AS SELECT * FROM fact.ordenes;
-CREATE OR REPLACE VIEW public.fact_precios AS SELECT * FROM fact.precios;
+-- Vistas de reporting (uso recomendado en Looker)
+CREATE OR REPLACE VIEW public.v_ventas      AS SELECT * FROM reporting.v_ventas;
+CREATE OR REPLACE VIEW public.v_cxc         AS SELECT * FROM reporting.v_cxc;
+CREATE OR REPLACE VIEW public.v_cxp         AS SELECT * FROM reporting.v_cxp;
+CREATE OR REPLACE VIEW public.v_inventario  AS SELECT * FROM reporting.v_inventario;
+CREATE OR REPLACE VIEW public.v_ordenes     AS SELECT * FROM reporting.v_ordenes;
+CREATE OR REPLACE VIEW public.v_pedidos     AS SELECT * FROM reporting.v_pedidos;
 
 -- Dimensiones
-CREATE OR REPLACE VIEW public.dim_cliente AS SELECT * FROM dim.cliente;
-CREATE OR REPLACE VIEW public.dim_vendedor AS SELECT * FROM dim.vendedor;
-CREATE OR REPLACE VIEW public.dim_producto AS SELECT * FROM dim.producto;
+CREATE OR REPLACE VIEW public.dim_sociedad  AS SELECT * FROM dim.sociedad;
+CREATE OR REPLACE VIEW public.dim_centro    AS SELECT * FROM dim.centro;
+CREATE OR REPLACE VIEW public.dim_cliente   AS SELECT * FROM dim.cliente;
+CREATE OR REPLACE VIEW public.dim_vendedor  AS SELECT * FROM dim.vendedor;
+CREATE OR REPLACE VIEW public.dim_producto  AS SELECT * FROM dim.producto;
 
 -- Catálogos
-CREATE OR REPLACE VIEW public.cat_canal AS SELECT * FROM cat.canal;
-CREATE OR REPLACE VIEW public.cat_clase_doc AS SELECT * FROM cat.clase_doc;
-CREATE OR REPLACE VIEW public.cat_clase_orden AS SELECT * FROM cat.clase_orden;
-CREATE OR REPLACE VIEW public.cat_condicion_pago AS SELECT * FROM cat.condicion_pago;
-CREATE OR REPLACE VIEW public.cat_gpo_cliente AS SELECT * FROM cat.gpo_cliente;
-CREATE OR REPLACE VIEW public.cat_grp_vendedor AS SELECT * FROM cat.grp_vendedor;
-CREATE OR REPLACE VIEW public.cat_lista_precio AS SELECT * FROM cat.lista_precio;
-CREATE OR REPLACE VIEW public.cat_ramo AS SELECT * FROM cat.ramo;
-CREATE OR REPLACE VIEW public.cat_sector AS SELECT * FROM cat.sector;
-CREATE OR REPLACE VIEW public.cat_zona_ventas AS SELECT * FROM cat.zona_ventas;
+CREATE OR REPLACE VIEW public.cat_canal           AS SELECT * FROM cat.canal;
+CREATE OR REPLACE VIEW public.cat_clase_doc       AS SELECT * FROM cat.clase_doc;
+CREATE OR REPLACE VIEW public.cat_clase_orden     AS SELECT * FROM cat.clase_orden;
+CREATE OR REPLACE VIEW public.cat_condicion_pago  AS SELECT * FROM cat.condicion_pago;
+CREATE OR REPLACE VIEW public.cat_gpo_cliente     AS SELECT * FROM cat.gpo_cliente;
+CREATE OR REPLACE VIEW public.cat_grp_vendedor    AS SELECT * FROM cat.grp_vendedor;
+CREATE OR REPLACE VIEW public.cat_lista_precio    AS SELECT * FROM cat.lista_precio;
+CREATE OR REPLACE VIEW public.cat_ramo            AS SELECT * FROM cat.ramo;
+CREATE OR REPLACE VIEW public.cat_sector          AS SELECT * FROM cat.sector;
+CREATE OR REPLACE VIEW public.cat_zona_ventas     AS SELECT * FROM cat.zona_ventas;
+
+-- Facts crudas (debug / queries avanzadas)
+CREATE OR REPLACE VIEW public.fact_ventas          AS SELECT * FROM fact.ventas;
+CREATE OR REPLACE VIEW public.fact_cxc             AS SELECT * FROM fact.cxc;
+CREATE OR REPLACE VIEW public.fact_cxp             AS SELECT * FROM fact.cxp;
+CREATE OR REPLACE VIEW public.fact_entregas        AS SELECT * FROM fact.entregas;
+CREATE OR REPLACE VIEW public.fact_pedidos         AS SELECT * FROM fact.pedidos;
+CREATE OR REPLACE VIEW public.fact_consumos        AS SELECT * FROM fact.consumos;
+CREATE OR REPLACE VIEW public.fact_notificaciones  AS SELECT * FROM fact.notificaciones;
+CREATE OR REPLACE VIEW public.fact_inventario      AS SELECT * FROM fact.inventario;
+CREATE OR REPLACE VIEW public.fact_ordenes         AS SELECT * FROM fact.ordenes;
+CREATE OR REPLACE VIEW public.fact_precios         AS SELECT * FROM fact.precios;

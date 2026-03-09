@@ -179,6 +179,27 @@ COLUMN_ALIASES: Dict[str, Dict[str, List[str]]] = {
         "TextCent":             ["TextCent", "Text.Cent."],
     },
 
+    # ── INVENTARIOS.CSV (inventario PT valorizado) ─────────────
+    "INVENTARIOS": {
+        "Codigo_Mat":           ["Codigo_Mat"],
+        "Centro":               ["Centro"],
+        "Almacen":              ["Almacen", "Almacén"],
+        "C-B":                  ["C-B", "CB"],
+        "LibreUt":              ["LibreUt", "Libre Ut.", "Libre utilización"],
+        "Valor_Lut":            ["Valor_Lut", "Valor Libre Ut."],
+        "Calidad":              ["Calidad"],
+        "Valor_Cal":            ["Valor_Cal", "Valor Calidad"],
+        "Bloqueado":            ["Bloqueado"],
+        "Valor_Blo":            ["Valor_Blo", "Valor Bloqueado"],
+        "TpMt":                 ["TpMt", "Tp.Mt."],
+        "Categoría":            ["Categoria", "Categoría"],
+        "Marca":                ["Marca"],
+        "Grupo":                ["Grupo"],
+        "Sector":               ["Sector"],
+        "TextAlm":              ["TextAlm", "Text.Alm."],
+        "TextCent":             ["TextCent", "Text.Cent."],
+    },
+
     # ── INVMP_XX.CSV (inventario MP) ──────────────────────────
     "INVMP": {
         "Codigo_Mat":           ["Codigo_Mat"],

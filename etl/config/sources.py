@@ -266,6 +266,25 @@ SOURCES = {
     },
 
     # ────────────────────────────────────────────────────────────
+    # INVENTARIO PT VALORIZADO — INVENTARIOS.CSV
+    # tipo_inv = 'PT_VALORIZADO' | SNAPSHOT
+    # Mismo scope que INVPT pero CON valores monetarios
+    # (Valor_Lut, Valor_Cal, Valor_Blo) + Categoria, Marca, Grupo, Sector
+    # ────────────────────────────────────────────────────────────
+    "INVENTARIOS": {
+        "file":       "INVENTARIOS.CSV",
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "inventario"),
+        "pk_cols":    ["Codigo_Mat", "Centro", "Almacen"],
+        "upsert_mode":"snapshot",
+        "tipo_inv":   "PT_VALORIZADO",
+        "drop_cols": {
+            "Denominacion Material",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
     # ÓRDENES PHARSANA — O_PHXX.CSV → fact.ordenes planta='PH'
     # ────────────────────────────────────────────────────────────
     "O_PH": {
@@ -435,6 +454,14 @@ PRODUCTO_SOURCES = [
         "Grupo":                "gr_material",
         "Sector":               "sector_texto",   # se resuelve a cod luego
     }),
+    ("INVENTARIOS", {
+        "Codigo_Mat":           "codigo_mat",
+        "Denominacion Material":"denominacion_material",
+        "Categoría":            "categoria",
+        "Marca":                "marca",
+        "Grupo":                "gr_material",
+        "Sector":               "sector_texto",
+    }),
     ("INVPT_GENERAL", {
         "Codigo_Mat":           "codigo_mat",
         "Denominacion Material":"denominacion_material",
@@ -474,6 +501,7 @@ FACT_LOAD_ORDER = [
     "INVPT",
     "INVPT_GENERAL",
     "INVMP",
+    "INVENTARIOS",
     "O_PH",
     "O_HG",
     "O_PM",

@@ -7,7 +7,7 @@ from pathlib import Path
 from contextlib import contextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from psycopg2 import pool as pg_pool
@@ -32,6 +32,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:6006",
         "http://127.0.0.1:6006",
     ],
@@ -83,6 +85,64 @@ class SchemaRelation(BaseModel):
     target_column: str
 
 
+# --- Looker View models ---
+
+_SAFE_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
+_SAFE_VIEW_NAME = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+_ALLOWED_OPERATORS = frozenset({"=", "!=", "<", ">", "<=", ">=", "LIKE", "ILIKE"})
+_ALLOWED_EXPORT_SCHEMAS = frozenset({"public", "reporting", "fact", "dim", "cat", "raw"})
+
+# Prefijos que identifican vistas del sistema (no borrables por el usuario)
+_SYSTEM_PREFIXES = ("v_", "dim_", "cat_", "fact_")
+
+
+def _is_protected(name: str) -> bool:
+    return any(name.startswith(p) for p in _SYSTEM_PREFIXES)
+
+
+_VIEW_CATEGORIES: dict[str, str] = {
+    "v_ventas": "Ventas", "v_cxc": "Ctas por Cobrar", "v_cxp": "Ctas por Pagar",
+    "v_inventario": "Inventario", "v_ordenes": "Órdenes", "v_pedidos": "Pedidos",
+    "dim_sociedad": "Dimensión", "dim_centro": "Dimensión",
+    "dim_producto": "Dimensión", "dim_cliente": "Dimensión",
+    "dim_vendedor": "Dimensión", "dim_condicion_pago": "Dimensión",
+    "dim_tipo_material": "Dimensión", "dim_grupo_material": "Dimensión",
+}
+
+
+class ViewFilter(BaseModel):
+    column: str = Field(..., min_length=1, max_length=100)
+    operator: str = Field(..., min_length=1, max_length=6)
+    value: str = Field(..., max_length=500)
+
+
+class CreateLookerViewRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=63)
+    base_view: str = Field(..., min_length=3, max_length=130)
+    description: str = Field(default="", max_length=500)
+    filters: list[ViewFilter] = Field(default_factory=list)
+
+
+class LookerView(BaseModel):
+    name: str
+    view_definition: str
+    is_custom: bool
+    category: str
+    description: str
+
+
+class BaseView(BaseModel):
+    schema_name: str
+    view_name: str
+    full_name: str
+    label: str
+
+
+class ViewColumn(BaseModel):
+    column_name: str
+    data_type: str
+
+
 class LineageSource(BaseModel):
     source_key: str
     file_name: str
@@ -130,6 +190,43 @@ def _validate_readonly(sql: str) -> str:
 
 
 # --- DB helpers ---
+
+@contextmanager
+def _write_conn():
+    conn = _pool.getconn()
+    try:
+        conn.autocommit = False
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _pool.putconn(conn)
+
+
+def _build_view_sql(name: str, base_view: str, filters: list[ViewFilter]) -> str:
+    if not _SAFE_VIEW_NAME.match(name):
+        raise HTTPException(400, f"Nombre de vista inválido: '{name}'")
+    parts = base_view.split(".")
+    if len(parts) != 2:
+        raise HTTPException(400, "base_view debe tener formato 'schema.nombre'")
+    base_schema, base_name = parts
+    if not _SAFE_IDENTIFIER.match(base_schema) or not _SAFE_IDENTIFIER.match(base_name):
+        raise HTTPException(400, "Nombre de vista base inválido")
+    where_clauses = []
+    for f in filters:
+        if not _SAFE_IDENTIFIER.match(f.column):
+            raise HTTPException(400, f"Columna inválida: '{f.column}'")
+        if f.operator not in _ALLOWED_OPERATORS:
+            raise HTTPException(400, f"Operador inválido: '{f.operator}'")
+        escaped = f.value.replace("'", "''")
+        where_clauses.append(f'"{f.column}" {f.operator} \'{escaped}\'')
+    sql = f'CREATE OR REPLACE VIEW public."{name}" AS\nSELECT * FROM {base_schema}."{base_name}"'
+    if where_clauses:
+        sql += "\nWHERE " + "\n  AND ".join(where_clauses)
+    return sql
+
 
 @contextmanager
 def _readonly_conn():
@@ -482,6 +579,220 @@ def refresh_schema():
     global _schema_cache
     _schema_cache = None
     return {"status": "refreshed"}
+
+
+# Vistas de reporting que Looker Studio consume (ya son vistas regulares,
+# no requieren refresh — siempre muestran data actual).
+_LOOKER_VIEWS = [
+    "public.v_ventas",
+    "public.v_cxc",
+    "public.v_cxp",
+    "public.v_inventario",
+    "public.v_ordenes",
+    "public.v_pedidos",
+]
+
+
+# --- Looker endpoints ---
+
+@app.get("/api/looker/views", response_model=list[LookerView])
+def list_looker_views():
+    sql = """
+        SELECT viewname AS name, definition AS defn, 'view' AS kind
+        FROM pg_views
+        WHERE schemaname = 'public'
+        UNION ALL
+        SELECT matviewname AS name, definition AS defn, 'matview' AS kind
+        FROM pg_matviews
+        WHERE schemaname = 'public'
+        ORDER BY name
+    """
+    with _readonly_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+    result = []
+    for name, defn, kind in rows:
+        is_custom = not _is_protected(name)
+        category = _VIEW_CATEGORIES.get(name, "Personalizada")
+        if kind == "matview":
+            category = _VIEW_CATEGORIES.get(name, "Materializada")
+        result.append(LookerView(
+            name=name,
+            view_definition=defn or "",
+            is_custom=is_custom,
+            category=category,
+            description="",
+        ))
+    return result
+
+
+@app.get("/api/looker/base-views", response_model=list[BaseView])
+def list_base_views():
+    _LABELS: dict[str, str] = {
+        "v_ventas": "Ventas", "v_cxc": "Cuentas por Cobrar", "v_cxp": "Cuentas por Pagar",
+        "v_inventario": "Inventario", "v_ordenes": "Órdenes", "v_pedidos": "Pedidos",
+    }
+    sql = """
+        SELECT schemaname AS sn, viewname AS vn
+        FROM pg_views
+        WHERE schemaname IN ('reporting', 'public')
+        UNION ALL
+        SELECT schemaname, matviewname
+        FROM pg_matviews
+        WHERE schemaname IN ('reporting', 'public')
+        ORDER BY sn, vn
+    """
+    with _readonly_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+    return [
+        BaseView(
+            schema_name=r[0],
+            view_name=r[1],
+            full_name=f"{r[0]}.{r[1]}",
+            label=_LABELS.get(r[1], r[1]),
+        )
+        for r in rows
+    ]
+
+
+@app.get("/api/looker/views/{view_name}/columns", response_model=list[ViewColumn])
+def get_view_columns(view_name: str):
+    if not _SAFE_VIEW_NAME.match(view_name):
+        raise HTTPException(400, "Nombre de vista inválido")
+    # pg_attribute funciona tanto para vistas regulares como materializadas
+    sql = """
+        SELECT a.attname AS column_name,
+               pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type
+        FROM pg_catalog.pg_attribute a
+        JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = 'public'
+          AND c.relname = %s
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
+    """
+    with _readonly_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (view_name,))
+            rows = cur.fetchall()
+    return [ViewColumn(column_name=r[0], data_type=r[1]) for r in rows]
+
+
+@app.post("/api/looker/views", status_code=201)
+def create_looker_view(req: CreateLookerViewRequest):
+    if _is_protected(req.name):
+        raise HTTPException(400, f"'{req.name}' es una vista protegida")
+    view_sql = _build_view_sql(req.name, req.base_view, req.filters)
+    with _write_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(view_sql)
+    return {"name": req.name, "sql": view_sql}
+
+
+@app.delete("/api/looker/views/{view_name}", status_code=200)
+def delete_looker_view(view_name: str):
+    if not _SAFE_VIEW_NAME.match(view_name):
+        raise HTTPException(400, "Nombre de vista inválido")
+    if _is_protected(view_name):
+        raise HTTPException(400, f"'{view_name}' es una vista del sistema y no puede eliminarse")
+    with _write_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f'DROP VIEW IF EXISTS public."{view_name}"')
+    return {"deleted": view_name}
+
+
+@app.get("/api/export/{view_name}")
+def export_view(
+    view_name: str,
+    schema: str = Query(default="public"),
+    limit: int = Query(default=500, ge=1, le=5_000),
+    offset: int = Query(default=0, ge=0),
+    filter: list[str] = Query(default=[]),
+):
+    """Exporta filas de una vista como JSON con filtros opcionales."""
+    if not _SAFE_IDENTIFIER.match(view_name):
+        raise HTTPException(400, "Nombre de vista inválido")
+    if not _SAFE_IDENTIFIER.match(schema) or schema not in _ALLOWED_EXPORT_SCHEMAS:
+        raise HTTPException(
+            400,
+            f"Schema no permitido: '{schema}'. Permitidos: {sorted(_ALLOWED_EXPORT_SCHEMAS)}",
+        )
+
+    # Parsear filtros con formato "columna:operador:valor"
+    where_clauses: list[str] = []
+    parsed_filters: list[dict] = []
+    for f_str in filter:
+        parts = f_str.split(":", 2)
+        if len(parts) != 3:
+            raise HTTPException(
+                400,
+                f"Filtro mal formado: '{f_str}'. Formato esperado: columna:operador:valor",
+            )
+        col, op, val = parts
+        if not _SAFE_IDENTIFIER.match(col):
+            raise HTTPException(400, f"Columna inválida: '{col}'")
+        if op not in _ALLOWED_OPERATORS:
+            raise HTTPException(
+                400,
+                f"Operador no permitido: '{op}'. Permitidos: {sorted(_ALLOWED_OPERATORS)}",
+            )
+        escaped = val.replace("'", "''")
+        clause = (
+            f'"{col}" ILIKE \'%{escaped}%\''
+            if op == "ILIKE"
+            else f'"{col}" {op} \'{escaped}\''
+        )
+        where_clauses.append(clause)
+        parsed_filters.append({"column": col, "operator": op, "value": val})
+
+    where_sql = ("\nWHERE " + "\n  AND ".join(where_clauses)) if where_clauses else ""
+    count_sql = f'SELECT COUNT(*) FROM {schema}."{view_name}"{where_sql}'
+    data_sql = (
+        f'SELECT * FROM {schema}."{view_name}"{where_sql}'
+        f"\nLIMIT {limit} OFFSET {offset}"
+    )
+
+    def _serialize(v: object) -> object:
+        if isinstance(v, decimal.Decimal):
+            return float(v)
+        if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
+            return v.isoformat()
+        return v
+
+    t0 = time.perf_counter()
+    try:
+        with _readonly_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(count_sql)
+                total: int = cur.fetchone()[0]
+                cur.execute(data_sql)
+                col_names = [d.name for d in cur.description]
+                rows = cur.fetchall()
+    except Exception as exc:
+        raise HTTPException(400, f"Error al ejecutar la consulta: {exc}") from exc
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+    data = [
+        {col_names[i]: _serialize(row[i]) for i in range(len(col_names))}
+        for row in rows
+    ]
+
+    return {
+        "view": view_name,
+        "schema": schema,
+        "total_records": total,
+        "returned_records": len(rows),
+        "truncated": (offset + len(rows)) < total,
+        "offset": offset,
+        "limit": limit,
+        "filters_applied": parsed_filters,
+        "execution_time_ms": elapsed_ms,
+        "data": data,
+    }
 
 
 @app.post("/api/query", response_model=QueryResponse)

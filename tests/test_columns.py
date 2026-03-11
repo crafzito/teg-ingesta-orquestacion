@@ -49,11 +49,20 @@ class TestGetv:
         assert getv(raw, "O_PH", "Fecha Inicio Extrema") == "20260101"
         assert getv(raw, "O_HG", "Fecha Inicio Extrema") == "20260101"
         assert getv(raw, "O_PM", "Fecha Inicio Extrema") == "20260101"
+        assert getv(raw, "O_PP", "Fecha Inicio Extrema") == "20260101"
+        assert getv(raw, "O_AM", "Fecha Inicio Extrema") == "20260101"
 
     def test_shared_aliases_consumos(self):
         raw = {"Cant.Plan": "50"}
         assert getv(raw, "C_PH", "Cant.Plan") == "50"
         assert getv(raw, "C_HG", "Cant.Plan") == "50"
+        assert getv(raw, "C_PP", "Cant.Plan") == "50"
+        assert getv(raw, "C_AM", "Cant.Plan") == "50"
+
+    def test_shared_aliases_notificaciones(self):
+        raw = {"Cant_Notif": "99"}
+        assert getv(raw, "N_PP", "Cant_Notif") == "99"
+        assert getv(raw, "N_AM", "Cant_Notif") == "99"
 
     def test_avac_columns(self):
         raw = {"Nº doc.": "5001234", "Proveedor": "V001"}

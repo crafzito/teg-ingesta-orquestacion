@@ -198,8 +198,22 @@ def upsert_rows(
 
 def _snapshot(conn, table: str, rows: List[Dict], tipo_inv: Optional[str]) -> Dict:
     """TRUNCATE del tipo + INSERT masivo."""
-    cols   = list(rows[0].keys())
-    values = [[r.get(c) for c in cols] for r in rows]
+    cols = list(rows[0].keys())
+
+    lh_idx = cols.index("line_hash") if "line_hash" in cols else None
+    seen_hashes = set()
+    deduped_rows = []
+    for row in rows:
+        if lh_idx is None:
+            deduped_rows.append(row)
+            continue
+        line_hash = row.get("line_hash")
+        if line_hash in seen_hashes:
+            continue
+        seen_hashes.add(line_hash)
+        deduped_rows.append(row)
+
+    values = [[row.get(c) for c in cols] for row in deduped_rows]
 
     with conn.cursor() as cur:
         if tipo_inv:
@@ -216,7 +230,11 @@ def _snapshot(conn, table: str, rows: List[Dict], tipo_inv: Optional[str]) -> Di
                 page_size=1000,
             )
 
-    return {"inserted": len(rows), "updated": 0, "skipped": 0}
+    return {
+        "inserted": len(deduped_rows),
+        "updated": 0,
+        "skipped": len(rows) - len(deduped_rows),
+    }
 
 
 def _merge(conn, table: str, rows: List[Dict], pk_columns: List[str]) -> Dict:

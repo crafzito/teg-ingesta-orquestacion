@@ -4,6 +4,7 @@ import { checkHealth } from './api'
 import Sidebar from './components/Layout/Sidebar'
 import Header from './components/Layout/Header'
 import Dashboard from './pages/Dashboard'
+import EtlMonitorPage from './pages/EtlMonitorPage'
 import ViewsPage from './pages/ViewsPage'
 import GuidePage from './pages/GuidePage'
 import SqlExplorer from './pages/SqlExplorer'
@@ -21,6 +22,7 @@ export default function App() {
 
   const pageComponents: Record<Page, React.ReactNode> = {
     dashboard: <Dashboard onNavigate={setPage} healthy={healthy} />,
+    etl: <EtlMonitorPage />,
     views: <ViewsPage />,
     guide: <GuidePage />,
     sql: <SqlExplorer />,

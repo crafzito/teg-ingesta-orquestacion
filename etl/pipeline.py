@@ -28,7 +28,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -37,11 +37,16 @@ from config.columns   import getv, validate_headers
 from cleaners.transformers import TRANSFORMER_MAP, set_batch_id, _parse_bool
 from cleaners.transformers import transform_raw_ventas, transform_raw_clientes
 from loaders.loader   import (
-    get_connection, file_md5, read_csv,
+    get_connection, read_csv,
     already_loaded, start_execution, finish_execution, log_reject,
     upsert_rows, upsert_catalog_v2, _merge_via_line_hash,
 )
 from parsers.parsers  import normalize_text, normalize_code, mock_code, pk_hash, row_hash
+from source_resolver import (
+    build_source_group_hash,
+    resolve_source_files,
+    summarize_source_files,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +60,26 @@ DSN = os.environ.get(
     "PG_DSN",
     "host=localhost dbname=sap_etl user=postgres password=postgres"
 )
+
+
+def _get_source_files(source_key: str, data_dir: str):
+    return resolve_source_files(data_dir, source_key)
+
+
+def _iter_source_rows(source_key: str, data_dir: str):
+    src_cfg = SOURCES.get(source_key)
+    if not src_cfg:
+        return
+
+    source_files = _get_source_files(source_key, data_dir)
+    for source_file in source_files:
+        rows = read_csv(
+            str(source_file.path),
+            src_cfg.get("encoding", "latin-1"),
+            src_cfg.get("delimiter", ";"),
+        )
+        for row in rows:
+            yield source_file, row
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -79,13 +104,17 @@ def load_catalogs(data_dir: str, dry_run: bool = False):
         src_cfg  = SOURCES.get(src_key)
         if not src_cfg:
             continue
-        filepath = os.path.join(data_dir, src_cfg["file"])
-        if not os.path.exists(filepath):
-            logger.warning(f"  [cat] {src_key}: archivo no encontrado ({filepath})")
+        source_files = _get_source_files(src_key, data_dir)
+        if not source_files:
+            logger.warning(f"  [cat] {src_key}: sin archivos en {data_dir}")
             continue
 
         # Leer todas las filas una vez
-        rows = list(read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]))
+        rows = []
+        for source_file in source_files:
+            rows.extend(
+                read_csv(str(source_file.path), src_cfg["encoding"], src_cfg["delimiter"])
+            )
 
         for table, cod_col, desc_col, es_mock in entries:
             pairs = {}
@@ -116,14 +145,14 @@ def load_dim_vendedor(data_dir: str, dry_run: bool = False):
     logger.info("── PASO 2: dim.vendedor ───────────────────────────")
 
     src_cfg  = SOURCES["CLIENTES"]
-    filepath = os.path.join(data_dir, src_cfg["file"])
-    if not os.path.exists(filepath):
-        logger.warning(f"  CLIENTES.CSV no encontrado")
+    source_files = _get_source_files("CLIENTES", data_dir)
+    if not source_files:
+        logger.warning("  CLIENTES: sin archivos de clientes")
         return
 
     SK = "CLIENTES"
     vendedores = {}
-    for row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
+    for _, row in _iter_source_rows("CLIENTES", data_dir):
         # Vendedores
         cod = normalize_code(getv(row, SK, "Cod.Vend") or "")
         nom = normalize_text(getv(row, SK, "Nombre_vendedor") or "")
@@ -165,11 +194,11 @@ def load_dim_producto(data_dir: str, dry_run: bool = False):
         src_cfg  = SOURCES.get(src_key)
         if not src_cfg:
             continue
-        filepath = os.path.join(data_dir, src_cfg["file"])
-        if not os.path.exists(filepath):
+        source_files = _get_source_files(src_key, data_dir)
+        if not source_files:
             continue
 
-        for row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
+        for _, row in _iter_source_rows(src_key, data_dir):
             codigo_mat = normalize_code(row.get("Codigo_Mat") or "")
             if not codigo_mat:
                 continue
@@ -221,16 +250,16 @@ def load_dim_cliente(data_dir: str, dry_run: bool = False):
     logger.info("── PASO 4: dim.cliente ────────────────────────────")
 
     src_cfg  = SOURCES["CLIENTES"]
-    filepath = os.path.join(data_dir, src_cfg["file"])
-    if not os.path.exists(filepath):
-        logger.warning(f"  CLIENTES.CSV no encontrado")
+    source_files = _get_source_files("CLIENTES", data_dir)
+    if not source_files:
+        logger.warning("  CLIENTES: sin archivos de clientes")
         return
 
     from parsers.parsers import parse_date
 
     SK = "CLIENTES"
     seen = {}  # dedup por cod_cliente (CLIENTES.CSV puede tener duplicados)
-    for row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
+    for _, row in _iter_source_rows("CLIENTES", data_dir):
         cod = normalize_code(getv(row, SK, "Cod. Cliente") or "")
         if not cod or cod in seen:
             continue
@@ -291,15 +320,14 @@ def _ensure_client_placeholders(conn, data_dir: str):
     Los 381 clientes que aparecen en PHXX pero no en CLIENTES
     se insertan como placeholder para que las FKs no fallen.
     """
-    src_cfg  = SOURCES.get("PHXX")
-    if not src_cfg:
+    if not SOURCES.get("PHXX"):
         return
-    filepath = os.path.join(data_dir, src_cfg["file"])
-    if not os.path.exists(filepath):
+    source_files = _get_source_files("PHXX", data_dir)
+    if not source_files:
         return
 
     clientes_ventas = set()
-    for row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
+    for _, row in _iter_source_rows("PHXX", data_dir):
         cod = normalize_code(row.get("Cod_cliente") or "")
         if cod:
             clientes_ventas.add(cod)
@@ -389,9 +417,9 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
         logger.error(f"[{source_key}] Fuente desconocida")
         return
 
-    filepath = os.path.join(data_dir, src_cfg["file"])
-    if not os.path.exists(filepath):
-        logger.warning(f"[{source_key}] Archivo no encontrado: {filepath}")
+    source_files = _get_source_files(source_key, data_dir)
+    if not source_files:
+        logger.warning(f"[{source_key}] Sin archivos en {data_dir}")
         return
 
     transformer = TRANSFORMER_MAP.get(source_key)
@@ -400,7 +428,8 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
         return
 
     schema, table = src_cfg["table"]
-    fhash = file_md5(filepath)
+    fhash = build_source_group_hash(source_files)
+    file_label = summarize_source_files(source_files)
 
     # Nivel 1 de idempotencia: mismo archivo → skip total
     if not dry_run:
@@ -408,33 +437,48 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
             if already_loaded(conn, source_key, fhash):
                 logger.info(f"[{source_key}] Sin cambios (mismo MD5) → skip")
                 return
-            exec_id = start_execution(conn, source_key, filepath, fhash)
+            exec_id = start_execution(conn, source_key, file_label, fhash)
 
-    logger.info(f"[{source_key}] Procesando {os.path.basename(filepath)}")
-
-    # ── Validación fail-fast de headers ──────────────────────────
-    _validate_csv_headers(source_key, filepath, src_cfg)
+    logger.info(
+        f"[{source_key}] Procesando {len(source_files)} archivo(s): "
+        f"{', '.join(source_file.filename for source_file in source_files)}"
+    )
 
     clean_rows = []
     rejected   = []
-    row_num    = 0
+    row_num = 0
 
-    for raw_row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
-        row_num += 1
+    for source_file in source_files:
+        _validate_csv_headers(source_key, str(source_file.path), src_cfg)
 
-        # Hardening: rechazar filas con keys None (separadores extra)
-        if None in raw_row or "" in raw_row.values():
-            none_keys = [k for k in raw_row if k is None]
-            if none_keys:
-                rejected.append((row_num, raw_row,
-                    f"Fila defectuosa: {len(none_keys)} columnas sin header (separadores extra)"))
-                continue
+        for raw_row in read_csv(
+            str(source_file.path),
+            src_cfg["encoding"],
+            src_cfg["delimiter"],
+        ):
+            row_num += 1
 
-        result = transformer(raw_row)
-        if result.is_valid:
-            clean_rows.append(result.row)
-        else:
-            rejected.append((row_num, raw_row, "; ".join(result.errors)))
+            # Hardening: rechazar filas con keys None (separadores extra)
+            if None in raw_row or "" in raw_row.values():
+                none_keys = [k for k in raw_row if k is None]
+                if none_keys:
+                    rejected.append((
+                        row_num,
+                        raw_row,
+                        f"{source_file.filename}: fila defectuosa: "
+                        f"{len(none_keys)} columnas sin header (separadores extra)",
+                    ))
+                    continue
+
+            result = transformer(raw_row)
+            if result.is_valid:
+                clean_rows.append(result.row)
+            else:
+                rejected.append((
+                    row_num,
+                    raw_row,
+                    f"{source_file.filename}: {'; '.join(result.errors)}",
+                ))
 
     logger.info(
         f"[{source_key}] {row_num} leídas | "
@@ -500,18 +544,21 @@ def load_raw(data_dir: str, dry_run: bool = False):
 
     for src_key, raw_table, transform_fn in legacy_jobs:
         src_cfg  = SOURCES.get(src_key)
-        filepath = os.path.join(data_dir, src_cfg["file"])
-        if not os.path.exists(filepath):
+        source_files = _get_source_files(src_key, data_dir)
+        if not source_files:
             logger.warning(f"  [{src_key}] no encontrado, saltando raw")
             continue
 
         logger.info(f"  [{src_key}] → {raw_table}")
         rows = []
-        source_file = os.path.basename(filepath)
-
-        for raw_row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
-            record = transform_fn(raw_row, source_file, _BATCH_ID)
-            rows.append(record)
+        for source_file in source_files:
+            for raw_row in read_csv(
+                str(source_file.path),
+                src_cfg["encoding"],
+                src_cfg["delimiter"],
+            ):
+                record = transform_fn(raw_row, source_file.filename, _BATCH_ID)
+                rows.append(record)
 
         logger.info(f"  [{src_key}] {len(rows)} filas raw")
         if dry_run or not rows:
@@ -555,28 +602,39 @@ def load_raw(data_dir: str, dry_run: bool = False):
     logger.info("  ── raw.source_data (JSONB genérico) ──")
 
     for src_key, src_cfg in SOURCES.items():
-        filepath = os.path.join(data_dir, src_cfg["file"])
-        if not os.path.exists(filepath):
+        source_files = _get_source_files(src_key, data_dir)
+        if not source_files:
             logger.debug(f"  [{src_key}] no encontrado, saltando raw genérico")
             continue
 
-        source_file = os.path.basename(filepath)
         pk_cols = src_cfg.get("pk_cols", [])
         batch = []
 
-        for raw_row in read_csv(filepath, src_cfg["encoding"], src_cfg["delimiter"]):
-            # PK hash: a partir de las pk_cols definidas en SOURCES
-            pk_values = [raw_row.get(c, "") for c in pk_cols]
-            p_hash = pk_hash(*pk_values) if pk_values else pk_hash(
-                _json.dumps(raw_row, ensure_ascii=False, sort_keys=True)
-            )
-            r_hash = row_hash(raw_row)
-            data_json = _json.dumps(
-                {k: v for k, v in raw_row.items() if k},
-                ensure_ascii=False,
-            )
+        for source_file in source_files:
+            for raw_row in read_csv(
+                str(source_file.path),
+                src_cfg["encoding"],
+                src_cfg["delimiter"],
+            ):
+                # PK hash: a partir de las pk_cols definidas en SOURCES
+                pk_values = [raw_row.get(c, "") for c in pk_cols]
+                p_hash = pk_hash(*pk_values) if pk_values else pk_hash(
+                    _json.dumps(raw_row, ensure_ascii=False, sort_keys=True)
+                )
+                r_hash = row_hash(raw_row)
+                data_json = _json.dumps(
+                    {k: v for k, v in raw_row.items() if k},
+                    ensure_ascii=False,
+                )
 
-            batch.append((src_key, p_hash, r_hash, data_json, source_file, _BATCH_ID))
+                batch.append((
+                    src_key,
+                    p_hash,
+                    r_hash,
+                    data_json,
+                    source_file.filename,
+                    _BATCH_ID,
+                ))
 
         # Deduplicar por pk_hash (posición 1 en la tupla)
         seen_pk = set()

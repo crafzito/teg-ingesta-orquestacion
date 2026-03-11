@@ -22,10 +22,16 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "PHXX": {
         "file":       "PHXX.CSV",
+        "file_patterns": [
+            r"PHXX\.CSV",
+            r"PPXX\.CSV",
+            r"AMXX\.CSV",
+            r"EMPX(?:_\d+)?\.CSV",
+        ],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "ventas"),
-        "pk_cols":    ["Num.Factura", "Cod_cliente", "Codigo_Mat", "Fecha.Doc"],
+        "pk_cols":    ["Num.Factura", "Cod_cliente", "Codigo_Mat", "Fecha.Doc", "OrgVtas"],
         "upsert_mode":"merge",
         # Estas columnas se eliminan porque son redundantes:
         # la info ya existe en las dimensiones y se obtiene por JOIN
@@ -111,10 +117,16 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "AVPH": {
         "file":       "AVPH.CSV",
+        "file_patterns": [
+            r"AVPH\.CSV",
+            r"AVPP\.CSV",
+            r"AVAM\.CSV",
+            r"AV(?:_| )EMPAQUE\.CSV",
+        ],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "cxc"),
-        "pk_cols":    ["N°.Documento", "Cliente", "Cl.Doc.", "Asignación", "Mon.F.", "Valor monetario"],
+        "pk_cols":    ["N°.Documento", "Cliente", "Cl.Doc.", "Asignación", "Mon.F.", "Valor monetario", "Sociedad"],
         "upsert_mode":"merge",
         "drop_cols": {
             "Nombre del Cliente",
@@ -135,6 +147,7 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "NEXFAC": {
         "file":       "NEXFAC20.CSV",
+        "file_patterns": [r"NEXFAC\d+\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "entregas"),
@@ -158,6 +171,7 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "PEDIDOSFULL": {
         "file":          "PEDIDOSFULL20.CSV",
+        "file_patterns": [r"PEDIDOSFULL\d+\.CSV"],
         "encoding":      "latin-1",
         "delimiter":     ";",
         "table":         ("fact", "pedidos"),
@@ -177,6 +191,7 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "PEDIDOS": {
         "file":          "PEDIDOS20.CSV",
+        "file_patterns": [r"PEDIDOS(?!FULL)\d+\.CSV"],
         "encoding":      "latin-1",
         "delimiter":     ";",
         "table":         ("fact", "pedidos"),
@@ -197,6 +212,11 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "CLIENTES": {
         "file":       "CLIENTES.CSV",
+        "file_patterns": [
+            r"CLIENTES\.CSV",
+            r"CLIENTES(?:_| )PET\.CSV",
+            r"CLIENTES(?:_| )AMP\.CSV",
+        ],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("dim", "cliente"),
@@ -220,6 +240,11 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "INVPT": {
         "file":       "INVPT_XX.CSV",
+        "file_patterns": [
+            r"INVPT(?:_| )XX\.CSV",
+            r"INVPT(?:_| )1200\.CSV",
+            r"INVPT(?:_| )1300\.CSV",
+        ],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "inventario"),
@@ -237,6 +262,7 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "INVPT_GENERAL": {
         "file":       "INVPT_XXGENERAL.CSV",
+        "file_patterns": [r"INVPT(?:_| )XXGENERAL\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "inventario"),
@@ -254,6 +280,11 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "INVMP": {
         "file":       "INVMP_XX.CSV",
+        "file_patterns": [
+            r"INVMP(?:_| )XX\.CSV",
+            r"INVMP(?:_| )1200\.CSV",
+            r"INVMP(?:_| )1300\.CSV",
+        ],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "inventario"),
@@ -289,10 +320,11 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "O_PH": {
         "file":       "O_PHXX.CSV",
+        "file_patterns": [r"O_PHXX\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "ordenes"),
-        "pk_cols":    ["Orden", "Codigo_Mat"],
+        "pk_cols":    ["Orden", "Codigo_Mat", "Centro"],
         "upsert_mode":"merge",
         "planta":     "PH",
         "drop_cols": {
@@ -306,10 +338,11 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "O_HG": {
         "file":       "O_HGXX.CSV",
+        "file_patterns": [r"O_HGXX\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "ordenes"),
-        "pk_cols":    ["Orden", "Codigo_Mat"],
+        "pk_cols":    ["Orden", "Codigo_Mat", "Centro"],
         "upsert_mode":"merge",
         "planta":     "HG",
         "drop_cols": {
@@ -323,12 +356,49 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "O_PM": {
         "file":       "O_PMXX.CSV",
+        "file_patterns": [r"O_PMXX\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "ordenes"),
-        "pk_cols":    ["Orden", "Codigo_Mat"],
+        "pk_cols":    ["Orden", "Codigo_Mat", "Centro"],
         "upsert_mode":"merge",
         "planta":     "PM",
+        "drop_cols": {
+            "Denominacion Material",
+            "Texto ClOrden",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
+    # ÓRDENES PROYECTOS PET — O_PPXX.CSV → fact.ordenes planta='PP'
+    # ────────────────────────────────────────────────────────────
+    "O_PP": {
+        "file":       "O_PPXX.CSV",
+        "file_patterns": [r"O_PPXX\.CSV"],
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "ordenes"),
+        "pk_cols":    ["Orden", "Codigo_Mat", "Centro"],
+        "upsert_mode":"merge",
+        "planta":     "PP",
+        "drop_cols": {
+            "Denominacion Material",
+            "Texto ClOrden",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
+    # ÓRDENES AMPOFRASCA — O_AMXX.CSV → fact.ordenes planta='AM'
+    # ────────────────────────────────────────────────────────────
+    "O_AM": {
+        "file":       "O_AMXX.CSV",
+        "file_patterns": [r"O_AMXX\.CSV"],
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "ordenes"),
+        "pk_cols":    ["Orden", "Codigo_Mat", "Centro"],
+        "upsert_mode":"merge",
+        "planta":     "AM",
         "drop_cols": {
             "Denominacion Material",
             "Texto ClOrden",
@@ -340,6 +410,7 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "C_PH": {
         "file":       "C_PHXX.CSV",
+        "file_patterns": [r"C_PHXX\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "consumos"),
@@ -356,6 +427,7 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "C_HG": {
         "file":       "C_HGXX.CSV",
+        "file_patterns": [r"C_HGXX\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "consumos"),
@@ -368,10 +440,45 @@ SOURCES = {
     },
 
     # ────────────────────────────────────────────────────────────
+    # CONSUMOS PROYECTOS PET — C_PPXX.CSV → fact.consumos planta='PP'
+    # ────────────────────────────────────────────────────────────
+    "C_PP": {
+        "file":       "C_PPXX.CSV",
+        "file_patterns": [r"C_PPXX\.CSV"],
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "consumos"),
+        "pk_cols":    ["Codigo_Mat", "Orden", "Origen"],
+        "upsert_mode":"merge",
+        "planta":     "PP",
+        "drop_cols": {
+            "Denominacion Material",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
+    # CONSUMOS AMPOFRASCA — C_AMXX.CSV → fact.consumos planta='AM'
+    # ────────────────────────────────────────────────────────────
+    "C_AM": {
+        "file":       "C_AMXX.CSV",
+        "file_patterns": [r"C_AMXX\.CSV"],
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "consumos"),
+        "pk_cols":    ["Codigo_Mat", "Orden", "Origen"],
+        "upsert_mode":"merge",
+        "planta":     "AM",
+        "drop_cols": {
+            "Denominacion Material",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
     # NOTIFICACIONES — N_PHXX.CSV
     # ────────────────────────────────────────────────────────────
     "N_PH": {
         "file":       "N_PHXX.CSV",
+        "file_patterns": [r"N_PHXX\.CSV"],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "notificaciones"),
@@ -382,6 +489,38 @@ SOURCES = {
             "Categoría",
             "Marca",
             "Grupo",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
+    # NOTIFICACIONES PROYECTOS PET — N_PPXX.CSV
+    # ────────────────────────────────────────────────────────────
+    "N_PP": {
+        "file":       "N_PPXX.CSV",
+        "file_patterns": [r"N_PPXX\.CSV"],
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "notificaciones"),
+        "pk_cols":    ["Codigo_Mat", "Fecha", "UM"],
+        "upsert_mode":"merge",
+        "drop_cols": {
+            "Denominacion Material",
+        },
+    },
+
+    # ────────────────────────────────────────────────────────────
+    # NOTIFICACIONES AMPOFRASCA — N_AMXX.CSV
+    # ────────────────────────────────────────────────────────────
+    "N_AM": {
+        "file":       "N_AMXX.CSV",
+        "file_patterns": [r"N_AMXX\.CSV"],
+        "encoding":   "latin-1",
+        "delimiter":  ";",
+        "table":      ("fact", "notificaciones"),
+        "pk_cols":    ["Codigo_Mat", "Fecha", "UM"],
+        "upsert_mode":"merge",
+        "drop_cols": {
+            "Denominacion Material",
         },
     },
 
@@ -407,10 +546,15 @@ SOURCES = {
     # ────────────────────────────────────────────────────────────
     "AVAC": {
         "file":       "AVAC_PH.CSV",
+        "file_patterns": [
+            r"AVAC_PH\.CSV",
+            r"AVAC_PP\.CSV",
+            r"AVAC_AM\.CSV",
+        ],
         "encoding":   "latin-1",
         "delimiter":  ";",
         "table":      ("fact", "cxp"),
-        "pk_cols":    ["Nº doc.", "Proveedor", "Clase Doc", "Asignacion", "Mon."],
+        "pk_cols":    ["Nº doc.", "Proveedor", "Clase Doc", "Asignacion", "Mon.", "Soc."],
         "upsert_mode":"merge",
         "drop_cols": {
             "Denominación",
@@ -505,8 +649,14 @@ FACT_LOAD_ORDER = [
     "O_PH",
     "O_HG",
     "O_PM",
+    "O_PP",
+    "O_AM",
     "C_PH",
     "C_HG",
+    "C_PP",
+    "C_AM",
     "N_PH",
+    "N_PP",
+    "N_AM",
     "PRECIOS",
 ]

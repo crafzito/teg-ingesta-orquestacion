@@ -82,9 +82,10 @@ def transform_ventas(raw: Dict) -> TransformResult:
     tipo_cambio    = parse_decimal(_g(raw, SK, "Tipo.Cambio", "0"))
     importe_final  = parse_decimal(_g(raw, SK, "Importe Final", "0"))
     importe_final2 = parse_decimal(_g(raw, SK, "Importe Final 2", "0"))
+    org_vtas = normalize_code(_g(raw, SK, "OrgVtas"))
 
     row = {
-        "line_hash":         pk_hash(num_factura, cod_cliente, codigo_mat, str(fecha_doc)),
+        "line_hash":         pk_hash(num_factura, cod_cliente, codigo_mat, str(fecha_doc), org_vtas or ""),
         "batch_id":          _CURRENT_BATCH_ID,
         "cod_cliente":       cod_cliente,
         "codigo_mat":        codigo_mat,
@@ -97,7 +98,7 @@ def transform_ventas(raw: Dict) -> TransformResult:
         "referencia":        normalize_code(_g(raw, SK, "Referencia")),
         "pedido_vta":        normalize_code(_g(raw, SK, "Pedido.Vta")),
         "almacen":           normalize_code(_g(raw, SK, "Almacen")),
-        "org_vtas":          normalize_code(_g(raw, SK, "OrgVtas")),
+        "org_vtas":          org_vtas,
         "cod_moneda":        normalize_code(_g(raw, SK, "Moneda.Doc.")),
         "status_anulacion":  normalize_code(_g(raw, SK, "Status de Anulacion")),
         "ind_retcl":         normalize_code(_g(raw, SK, "Ind_retcl")),
@@ -135,6 +136,7 @@ def transform_cxc(raw: Dict) -> TransformResult:
     SK = "AVPH"
     n_doc = normalize_code(_g(raw, SK, "N°.Documento"))
     cliente = normalize_code(_g(raw, SK, "Cliente"))
+    sociedad = normalize_code(_g(raw, SK, "Sociedad"))
 
     if not n_doc or not cliente:
         return TransformResult(False, {}, ["n_documento o cliente vacío"])
@@ -146,6 +148,7 @@ def transform_cxc(raw: Dict) -> TransformResult:
             _g(raw, SK, "Asignación"),
             _g(raw, SK, "Mon.F."),
             _g(raw, SK, "Valor monetario"),
+            sociedad or "",
         ),
         "batch_id":          _CURRENT_BATCH_ID,
         "cod_cliente":       cliente,
@@ -155,7 +158,7 @@ def transform_cxc(raw: Dict) -> TransformResult:
         "cod_moneda":        normalize_code(_g(raw, SK, "Mon.F.")),
         "n_documento":       n_doc,
         "asignacion":        normalize_code(_g(raw, SK, "Asignación")),
-        "sociedad":          normalize_code(_g(raw, SK, "Sociedad")),
+        "sociedad":          sociedad,
         "texto":             normalize_text(_g(raw, SK, "Texto")),
         "fecha_doc":         parse_date(_g(raw, SK, "Fecha Doc.")),
         "fecha_base":        parse_date(_g(raw, SK, "Fecha Base")),
@@ -314,18 +317,19 @@ def _make_transform_ordenes(planta: str, source_key: str):
         SK = source_key
         num_orden  = normalize_code(_g(raw, SK, "Orden"))
         codigo_mat = normalize_code(_g(raw, SK, "Codigo_Mat"))
+        centro = normalize_code(_g(raw, SK, "Centro"))
 
         if not num_orden or not codigo_mat:
             return TransformResult(False, {}, ["orden o codigo_mat vacío"])
 
         row = {
-            "line_hash":          pk_hash(planta, num_orden, codigo_mat),
+            "line_hash":          pk_hash(planta, num_orden, codigo_mat, centro or ""),
             "batch_id":           _CURRENT_BATCH_ID,
             "codigo_mat":         codigo_mat,
             "cod_clase_orden":    normalize_code(_g(raw, SK, "Clase Orden")),
             "planta":             planta,
             "num_orden":          num_orden,
-            "centro":             normalize_code(_g(raw, SK, "Centro")),
+            "centro":             centro,
             "reproceso":          normalize_code(_g(raw, SK, "Reproceso")),
             "estatus":            normalize_text(_g(raw, SK, "Estatus")),
             "maquina":            normalize_text(_g(raw, SK, "Maquina")),
@@ -347,6 +351,8 @@ def _make_transform_ordenes(planta: str, source_key: str):
 transform_ordenes_ph = _make_transform_ordenes("PH", "O_PH")
 transform_ordenes_hg = _make_transform_ordenes("HG", "O_HG")
 transform_ordenes_pm = _make_transform_ordenes("PM", "O_PM")
+transform_ordenes_pp = _make_transform_ordenes("PP", "O_PP")
+transform_ordenes_am = _make_transform_ordenes("AM", "O_AM")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -391,35 +397,45 @@ def _make_transform_consumos(planta: str, source_key: str):
 
 transform_consumos_ph = _make_transform_consumos("PH", "C_PH")
 transform_consumos_hg = _make_transform_consumos("HG", "C_HG")
+transform_consumos_pp = _make_transform_consumos("PP", "C_PP")
+transform_consumos_am = _make_transform_consumos("AM", "C_AM")
 
 
 # ────────────────────────────────────────────────────────────────
 # NOTIFICACIONES — N_PHXX.CSV → fact.notificaciones
 # ────────────────────────────────────────────────────────────────
-def transform_notificaciones(raw: Dict) -> TransformResult:
-    SK = "N_PH"
-    codigo_mat = normalize_code(_g(raw, SK, "Codigo_Mat"))
-    fecha      = parse_date(_g(raw, SK, "Fecha"))
-    um         = normalize_code(_g(raw, SK, "UM"))
+def _make_transform_notificaciones(source_key: str) -> Any:
+    def transform(raw: Dict) -> TransformResult:
+        SK = source_key
+        codigo_mat = normalize_code(_g(raw, SK, "Codigo_Mat"))
+        fecha = parse_date(_g(raw, SK, "Fecha"))
+        um = normalize_code(_g(raw, SK, "UM"))
 
-    if not codigo_mat or fecha is None:
-        return TransformResult(False, {}, ["codigo_mat o fecha vacío"])
+        if not codigo_mat or fecha is None:
+            return TransformResult(False, {}, ["codigo_mat o fecha vacío"])
 
-    row = {
-        "line_hash":    pk_hash(codigo_mat, str(fecha), um or ""),
-        "batch_id":     _CURRENT_BATCH_ID,
-        "codigo_mat":   codigo_mat,
-        "fecha":        fecha,
-        "um":           um,
-        "sector_texto": normalize_text(_g(raw, SK, "Sector")),
-        "reproceso":    normalize_code(_g(raw, SK, "Reproceso")),
-        "cant_notif":   parse_decimal(_g(raw, SK, "Cant_Notif", "0")),
-        "libre_ut":     parse_decimal(_g(raw, SK, "Libre Ut.", "0")),
-        "exist_otr":    parse_decimal(_g(raw, SK, "Exist.Otr.", "0")),
-        "fecha_hora":   None,
-    }
+        row = {
+            "line_hash":    pk_hash(source_key, codigo_mat, str(fecha), um or ""),
+            "batch_id":     _CURRENT_BATCH_ID,
+            "codigo_mat":   codigo_mat,
+            "fecha":        fecha,
+            "um":           um,
+            "sector_texto": normalize_text(_g(raw, SK, "Sector")),
+            "reproceso":    normalize_code(_g(raw, SK, "Reproceso")),
+            "cant_notif":   parse_decimal(_g(raw, SK, "Cant_Notif", "0")),
+            "libre_ut":     parse_decimal(_g(raw, SK, "Libre Ut.", "0")),
+            "exist_otr":    parse_decimal(_g(raw, SK, "Exist.Otr.", "0")),
+            "fecha_hora":   None,
+        }
 
-    return TransformResult(True, row)
+        return TransformResult(True, row)
+
+    return transform
+
+
+transform_notificaciones_ph = _make_transform_notificaciones("N_PH")
+transform_notificaciones_pp = _make_transform_notificaciones("N_PP")
+transform_notificaciones_am = _make_transform_notificaciones("N_AM")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -470,6 +486,7 @@ def transform_cxp(raw: Dict) -> TransformResult:
             _g(raw, SK, "Clase Doc"),
             _g(raw, SK, "Asignacion"),
             _g(raw, SK, "Mon."),
+            normalize_code(_g(raw, SK, "Soc.")) or "",
         ),
         "batch_id":           _CURRENT_BATCH_ID,
         "sociedad":           normalize_code(_g(raw, SK, "Soc.")),
@@ -515,6 +532,7 @@ def transform_raw_ventas(raw: Dict, source_file: str, batch_id: str) -> Dict:
         g("Cod_cliente") or "",
         g("Codigo_Mat") or "",
         g("Fecha.Doc") or "",
+        g("OrgVtas") or "",
     )
 
     record = {
@@ -671,9 +689,15 @@ TRANSFORMER_MAP = {
     "O_PH":          transform_ordenes_ph,
     "O_HG":          transform_ordenes_hg,
     "O_PM":          transform_ordenes_pm,
+    "O_PP":          transform_ordenes_pp,
+    "O_AM":          transform_ordenes_am,
     "C_PH":          transform_consumos_ph,
     "C_HG":          transform_consumos_hg,
-    "N_PH":          transform_notificaciones,
+    "C_PP":          transform_consumos_pp,
+    "C_AM":          transform_consumos_am,
+    "N_PH":          transform_notificaciones_ph,
+    "N_PP":          transform_notificaciones_pp,
+    "N_AM":          transform_notificaciones_am,
     "PRECIOS":       transform_precios,
     "AVAC":          transform_cxp,
 }

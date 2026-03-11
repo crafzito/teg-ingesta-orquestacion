@@ -24,6 +24,12 @@ const NAV_ITEMS: NavItem[] = [
     description: 'Resumen del sistema',
   },
   {
+    id: 'etl',
+    label: 'Monitor ETL',
+    icon: <Activity size={18} />,
+    description: 'Ejecuciones, archivos y estado operativo',
+  },
+  {
     id: 'views',
     label: 'Fuentes Looker',
     icon: <Database size={18} />,

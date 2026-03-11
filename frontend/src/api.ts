@@ -6,6 +6,7 @@ import type {
   QueryResponse,
   ExportResponse,
   ExportFilter,
+  EtlMonitorResponse,
 } from './types'
 
 const BASE = '/api'
@@ -20,6 +21,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export async function checkHealth(): Promise<{ status: string }> {
   const res = await fetch(`${BASE}/health`)
+  return handleResponse(res)
+}
+
+export async function getEtlMonitor(): Promise<EtlMonitorResponse> {
+  const res = await fetch(`${BASE}/etl/monitor`)
   return handleResponse(res)
 }
 

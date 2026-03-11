@@ -5,6 +5,10 @@ const PAGE_META: Record<Page, { title: string; subtitle: string }> = {
     title: 'Inicio',
     subtitle: 'Resumen general del sistema ETL y Looker Studio',
   },
+  etl: {
+    title: 'Monitor ETL',
+    subtitle: 'Estado actual, ejecuciones recientes y control operativo de archivos y cargas',
+  },
   views: {
     title: 'Fuentes Looker',
     subtitle: 'Gestiona las vistas públicas disponibles para conectar en Looker Studio',

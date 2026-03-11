@@ -8,6 +8,7 @@ import {
   Layers,
   FileSpreadsheet,
   BookOpen,
+  Activity,
 } from 'lucide-react'
 import type { Page, LookerView } from '../types'
 import { getLookerViews } from '../api'
@@ -111,7 +112,15 @@ export default function Dashboard({ onNavigate, healthy }: Props) {
         <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">
           Acciones rápidas
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <ActionCard
+            title="Monitor ETL"
+            description="Revisa si el ETL está corriendo, la última carga y los archivos detectados."
+            icon={<Activity size={18} className="text-amber-600" />}
+            onClick={() => onNavigate('etl')}
+            badge="Control"
+            badgeColor="bg-amber-100 text-amber-700"
+          />
           <ActionCard
             title="Gestionar Fuentes"
             description="Ver, crear y eliminar vistas públicas disponibles en Looker Studio."

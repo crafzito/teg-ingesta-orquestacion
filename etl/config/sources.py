@@ -26,7 +26,7 @@ SOURCES = {
             r"PHXX\.CSV",
             r"PPXX\.CSV",
             r"AMXX\.CSV",
-            r"EMPX(?:_\d+)?\.CSV",
+            r"EMPX(?:_\d+)?\.CSV", #eliminar
         ],
         "encoding":   "latin-1",
         "delimiter":  ";",
@@ -121,7 +121,7 @@ SOURCES = {
             r"AVPH\.CSV",
             r"AVPP\.CSV",
             r"AVAM\.CSV",
-            r"AV(?:_| )EMPAQUE\.CSV",
+            r"AV(?:_| )EMPAQUE\.CSV", #eliminar
         ],
         "encoding":   "latin-1",
         "delimiter":  ";",

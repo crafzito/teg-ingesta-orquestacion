@@ -70,6 +70,7 @@ ETL_MONITOR_DIRS = [
     PROJECT_ROOT / "data" / "Div Empaque",
 ]
 
+
 _schema_cache: list[SchemaTable] | None = None
 
 
@@ -236,10 +237,15 @@ def list_directory_summary(path: Path) -> EtlDirectorySummary:
     csv_count = 0
     xlsx_count = 0
 
-    for item in sorted(path.iterdir(), key=lambda entry: entry.name.lower()):
+    disk_entries: list[tuple[Path, os.stat_result]] = []
+    for item in path.iterdir():
         if not item.is_file():
             continue
-        stat = item.stat()
+        disk_entries.append((item, item.stat()))
+
+    disk_entries.sort(key=lambda pair: (-pair[1].st_mtime, pair[0].name.lower()))
+
+    for item, stat in disk_entries:
         modified_at = from_timestamp(stat.st_mtime)
         files.append(
             EtlFileEntry(
@@ -269,19 +275,26 @@ def list_directory_summary(path: Path) -> EtlDirectorySummary:
 
 
 def execution_item_from_row(row: tuple) -> EtlExecutionItem:
+    batch_id = None
+    offset = 0
+    if len(row) >= 13:
+        batch_id = row[1]
+        offset = 1
+
     return EtlExecutionItem(
         id=int(row[0]),
-        source_key=row[1],
-        filepath=row[2],
-        status=row[3],
-        started_at=row[4],
-        finished_at=row[5],
-        rows_read=int(row[6] or 0),
-        rows_inserted=int(row[7] or 0),
-        rows_updated=int(row[8] or 0),
-        rows_skipped=int(row[9] or 0),
-        rows_rejected=int(row[10] or 0),
-        error_message=row[11],
+        batch_id=batch_id,
+        source_key=row[1 + offset],
+        filepath=row[2 + offset],
+        status=row[3 + offset],
+        started_at=row[4 + offset],
+        finished_at=row[5 + offset],
+        rows_read=int(row[6 + offset] or 0),
+        rows_inserted=int(row[7 + offset] or 0),
+        rows_updated=int(row[8 + offset] or 0),
+        rows_skipped=int(row[9 + offset] or 0),
+        rows_rejected=int(row[10 + offset] or 0),
+        error_message=row[11 + offset],
     )
 
 

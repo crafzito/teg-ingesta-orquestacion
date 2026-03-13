@@ -28,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -162,13 +163,20 @@ class DebouncedETLHandler(FileSystemEventHandler):
         logger.info("=" * 60)
 
         try:
+            batch_id = datetime.now().astimezone().strftime(
+                "watcher-%Y%m%d-%H%M%S"
+            ) + f"-{uuid.uuid4().hex[:8]}"
             cmd = [
                 sys.executable,
                 str(ETL_DIR / "pipeline.py"),
                 "--dir", self.data_dir,
+                "--batch-id", batch_id,
+                "--batch-trigger", "WATCHER",
             ]
             if self.skip_raw:
                 cmd.append("--skip-raw")
+            for filename in sorted(changed):
+                cmd.extend(["--batch-file", filename])
 
             result = subprocess.run(
                 cmd,
@@ -179,9 +187,9 @@ class DebouncedETLHandler(FileSystemEventHandler):
             )
 
             if result.returncode == 0:
-                logger.info("Pipeline completado exitosamente")
+                logger.info("Pipeline completado exitosamente (batch=%s)", batch_id)
             else:
-                logger.error(f"Pipeline falló con código {result.returncode}")
+                logger.error("Pipeline falló con código %s (batch=%s)", result.returncode, batch_id)
 
         except Exception as e:
             logger.error(f"Error ejecutando pipeline: {e}")

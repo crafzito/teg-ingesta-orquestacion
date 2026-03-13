@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, List
 
@@ -83,6 +84,19 @@ def summarize_source_files(files: Iterable[ResolvedSourceFile], limit: int = 3) 
     return summary[:500]
 
 
+def match_source_keys(filename: str) -> List[str]:
+    """Devuelve las fuentes lógicas que aceptan un nombre de archivo dado."""
+    normalized = filename.strip()
+    matches: List[str] = []
+
+    for source_key in SOURCES:
+        if _matches_any(normalized, _compile_patterns(source_key)):
+            matches.append(source_key)
+
+    return matches
+
+
+@lru_cache(maxsize=None)
 def _compile_patterns(source_key: str) -> List[re.Pattern[str]]:
     src_cfg = SOURCES.get(source_key, {})
     raw_patterns = src_cfg.get("file_patterns")

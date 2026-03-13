@@ -15,6 +15,8 @@ import hashlib
 import json
 import logging
 import os
+from dataclasses import dataclass
+from datetime import datetime
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
@@ -22,6 +24,17 @@ import psycopg2
 import psycopg2.extras
 
 logger = logging.getLogger("loader")
+
+
+@dataclass(frozen=True)
+class BatchFileRecord:
+    filename: str
+    filepath: str
+    source_key: Optional[str]
+    file_hash: Optional[str]
+    size_bytes: int
+    modified_at: Optional[datetime]
+    status: str = "RECEIVED"
 
 
 # ── CONEXIÓN ──────────────────────────────────────────────────────
@@ -51,6 +64,337 @@ def file_md5(filepath: str) -> str:
     return h.hexdigest()
 
 
+def ensure_batch(
+    conn,
+    batch_id: str,
+    trigger_type: str,
+    data_dir: str,
+    files: List[BatchFileRecord],
+):
+    """Crea o reactiva un lote ETL y registra sus archivos observados."""
+    scope = "DELTA" if files else "FULL_SCAN"
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO etl.batches
+                (batch_id, trigger_type, scope, status, data_dir)
+            VALUES (%s, %s, %s, 'RUNNING', %s)
+            ON CONFLICT (batch_id) DO UPDATE SET
+                trigger_type = EXCLUDED.trigger_type,
+                scope = EXCLUDED.scope,
+                status = 'RUNNING',
+                data_dir = EXCLUDED.data_dir,
+                heartbeat_at = NOW(),
+                finished_at = NULL,
+                error_message = NULL
+            """,
+            (batch_id, trigger_type, scope, data_dir),
+        )
+
+        if files:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO etl.batch_files
+                    (
+                        batch_id, source_key, filename, filepath,
+                        file_hash, size_bytes, modified_at, status, heartbeat_at
+                    )
+                VALUES %s
+                ON CONFLICT (batch_id, filepath) DO UPDATE SET
+                    source_key = COALESCE(EXCLUDED.source_key, etl.batch_files.source_key),
+                    file_hash = EXCLUDED.file_hash,
+                    size_bytes = EXCLUDED.size_bytes,
+                    modified_at = EXCLUDED.modified_at,
+                    status = CASE
+                        WHEN etl.batch_files.status IN ('SUCCESS', 'FAILED', 'SKIPPED', 'IGNORED')
+                            THEN etl.batch_files.status
+                        ELSE EXCLUDED.status
+                    END,
+                    heartbeat_at = NOW()
+                """,
+                [
+                    (
+                        batch_id,
+                        item.source_key,
+                        item.filename,
+                        item.filepath,
+                        item.file_hash,
+                        item.size_bytes,
+                        item.modified_at,
+                        item.status,
+                    )
+                    for item in files
+                ],
+                template="(%s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+                page_size=200,
+            )
+
+    conn.commit()
+
+
+def touch_batch(conn, batch_id: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE etl.batches
+            SET heartbeat_at = NOW()
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        )
+    conn.commit()
+
+
+def start_batch_source(
+    conn,
+    batch_id: str,
+    source_key: str,
+    execution_id: Optional[int] = None,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE etl.batch_files
+            SET
+                status = 'PROCESSING',
+                execution_id = COALESCE(%s, execution_id),
+                started_at = COALESCE(started_at, NOW()),
+                heartbeat_at = NOW(),
+                error_message = NULL
+            WHERE batch_id = %s
+              AND source_key = %s
+              AND status NOT IN ('SUCCESS', 'FAILED', 'IGNORED')
+            """,
+            (execution_id, batch_id, source_key),
+        )
+
+        cur.execute(
+            """
+            UPDATE etl.batches
+            SET heartbeat_at = NOW()
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        )
+
+    conn.commit()
+
+
+def update_batch_source_progress(
+    conn,
+    batch_id: str,
+    source_key: str,
+    execution_id: Optional[int] = None,
+    rows_read: int = 0,
+    rows_rejected: int = 0,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE etl.batch_files
+            SET
+                status = 'PROCESSING',
+                execution_id = COALESCE(%s, execution_id),
+                heartbeat_at = NOW(),
+                rows_read = GREATEST(COALESCE(rows_read, 0), %s),
+                rows_rejected = GREATEST(COALESCE(rows_rejected, 0), %s)
+            WHERE batch_id = %s
+              AND source_key = %s
+            """,
+            (execution_id, rows_read, rows_rejected, batch_id, source_key),
+        )
+
+        cur.execute(
+            """
+            UPDATE etl.batches
+            SET heartbeat_at = NOW()
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        )
+
+    conn.commit()
+
+
+def finish_batch_source(
+    conn,
+    batch_id: str,
+    source_key: str,
+    status: str,
+    execution_id: Optional[int] = None,
+    rows_read: int = 0,
+    rows_inserted: int = 0,
+    rows_updated: int = 0,
+    rows_skipped: int = 0,
+    rows_rejected: int = 0,
+    error_msg: Optional[str] = None,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE etl.batch_files
+            SET
+                status = %s,
+                execution_id = COALESCE(%s, execution_id),
+                heartbeat_at = NOW(),
+                finished_at = NOW(),
+                rows_read = GREATEST(COALESCE(rows_read, 0), %s),
+                rows_inserted = GREATEST(COALESCE(rows_inserted, 0), %s),
+                rows_updated = GREATEST(COALESCE(rows_updated, 0), %s),
+                rows_skipped = GREATEST(COALESCE(rows_skipped, 0), %s),
+                rows_rejected = GREATEST(COALESCE(rows_rejected, 0), %s),
+                error_message = %s
+            WHERE batch_id = %s
+              AND source_key = %s
+            """,
+            (
+                status,
+                execution_id,
+                rows_read,
+                rows_inserted,
+                rows_updated,
+                rows_skipped,
+                rows_rejected,
+                error_msg,
+                batch_id,
+                source_key,
+            ),
+        )
+
+        cur.execute(
+            """
+            UPDATE etl.batches
+            SET heartbeat_at = NOW()
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        )
+
+    conn.commit()
+
+
+def skip_batch_source(conn, batch_id: str, source_key: str, reason: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE etl.batch_files
+            SET
+                status = 'SKIPPED',
+                heartbeat_at = NOW(),
+                finished_at = COALESCE(finished_at, NOW()),
+                error_message = COALESCE(error_message, %s)
+            WHERE batch_id = %s
+              AND source_key = %s
+              AND status IN ('RECEIVED', 'PROCESSING')
+            """,
+            (reason, batch_id, source_key),
+        )
+
+        cur.execute(
+            """
+            UPDATE etl.batches
+            SET heartbeat_at = NOW()
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        )
+
+    conn.commit()
+
+
+def complete_batch(
+    conn,
+    batch_id: str,
+    error_msg: Optional[str] = None,
+    fail_pending: bool = False,
+):
+    with conn.cursor() as cur:
+        if fail_pending:
+            cur.execute(
+                """
+                UPDATE etl.batch_files
+                SET
+                    status = 'FAILED',
+                    heartbeat_at = NOW(),
+                    finished_at = COALESCE(finished_at, NOW()),
+                    error_message = COALESCE(error_message, %s)
+                WHERE batch_id = %s
+                  AND status IN ('RECEIVED', 'PROCESSING')
+                """,
+                (error_msg or 'Lote interrumpido antes de completar el archivo', batch_id),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE etl.batch_files
+                SET
+                    status = CASE
+                        WHEN source_key IS NULL THEN 'IGNORED'
+                        ELSE 'SKIPPED'
+                    END,
+                    heartbeat_at = NOW(),
+                    finished_at = COALESCE(finished_at, NOW()),
+                    error_message = CASE
+                        WHEN source_key IS NULL THEN COALESCE(error_message, 'Archivo sin fuente ETL asociada')
+                        ELSE COALESCE(error_message, 'Sin cambios detectados en la fuente')
+                    END
+                WHERE batch_id = %s
+                  AND status = 'RECEIVED'
+                """,
+                (batch_id,),
+            )
+
+            cur.execute(
+                """
+                UPDATE etl.batch_files
+                SET
+                    status = 'FAILED',
+                    heartbeat_at = NOW(),
+                    finished_at = COALESCE(finished_at, NOW()),
+                    error_message = COALESCE(error_message, 'Archivo interrumpido durante el cierre del lote')
+                WHERE batch_id = %s
+                  AND status = 'PROCESSING'
+                """,
+                (batch_id,),
+            )
+
+        cur.execute(
+            """
+            SELECT
+                COUNT(*),
+                COUNT(*) FILTER (WHERE status = 'FAILED'),
+                COUNT(*) FILTER (WHERE status IN ('SUCCESS', 'SKIPPED', 'IGNORED'))
+            FROM etl.batch_files
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        )
+        total_files, failed_files, completed_files = cur.fetchone()
+
+        batch_status = "SUCCESS"
+        if total_files and failed_files:
+            batch_status = "FAILED" if failed_files == total_files else "PARTIAL_FAILED"
+        elif total_files and completed_files == 0 and error_msg:
+            batch_status = "FAILED"
+
+        cur.execute(
+            """
+            UPDATE etl.batches
+            SET
+                status = %s,
+                heartbeat_at = NOW(),
+                finished_at = NOW(),
+                error_message = COALESCE(%s, error_message)
+            WHERE batch_id = %s
+            """,
+            (batch_status, error_msg, batch_id),
+        )
+
+    conn.commit()
+
+
 # ── CONTROL DE EJECUCIONES ───────────────────────────────────────
 
 def already_loaded(conn, source_key: str, file_hash: str) -> bool:
@@ -69,18 +413,46 @@ def already_loaded(conn, source_key: str, file_hash: str) -> bool:
         return cur.fetchone() is not None
 
 
-def start_execution(conn, source_key: str, filepath: str, file_hash: str) -> int:
+def start_execution(
+    conn,
+    source_key: str,
+    filepath: str,
+    file_hash: str,
+    batch_id: Optional[str] = None,
+) -> int:
     """Registra el inicio de una ejecución. Devuelve el ID."""
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO etl.executions
-                (source_key, filepath, file_hash, status)
-            VALUES (%s, %s, %s, 'RUNNING')
+                (batch_id, source_key, filepath, file_hash, status)
+            VALUES (%s, %s, %s, %s, 'RUNNING')
             RETURNING id
-        """, (source_key, filepath, file_hash))
+        """, (batch_id, source_key, filepath, file_hash))
         exec_id = cur.fetchone()[0]
     conn.commit()
     return exec_id
+
+
+def update_execution_progress(
+    conn,
+    exec_id: int,
+    rows_read: int = 0,
+    rows_rejected: int = 0,
+):
+    """Actualiza el progreso visible de una ejecución en curso."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE etl.executions SET
+                heartbeat_at = NOW(),
+                rows_read = GREATEST(COALESCE(rows_read, 0), %s),
+                rows_rejected = GREATEST(COALESCE(rows_rejected, 0), %s)
+            WHERE id = %s
+              AND status = 'RUNNING'
+            """,
+            (rows_read, rows_rejected, exec_id),
+        )
+    conn.commit()
 
 
 def finish_execution(
@@ -98,6 +470,7 @@ def finish_execution(
         cur.execute("""
             UPDATE etl.executions SET
                 status        = %s,
+                heartbeat_at  = NOW(),
                 finished_at   = NOW(),
                 rows_read     = %s,
                 rows_inserted = %s,

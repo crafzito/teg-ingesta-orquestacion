@@ -7,6 +7,15 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
+/data/*
+data/*.CSV
+data/*.csv
+data/input/*.CSV
+data/input/*.csv    
+data/*
+data/div_consumo_*.csv
+data/div_consumo_*.CSV
+
 # IDEs
 .vscode/
 .idea/
@@ -24,13 +33,14 @@ __pycache__/
 # Data (CSVs pesados, no subir al repo)
 data/input/*.CSV
 data/input/*.csv
-Div Consumo/
+
 
 # AI agent skills
 skills/
 
 # Logs
 *.log
+.runtime/
 
 # AI assistants
 .claude/

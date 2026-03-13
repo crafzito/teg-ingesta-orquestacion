@@ -7,6 +7,7 @@ import {
   Activity,
   FileJson,
 } from 'lucide-react'
+import { getBackendHttpOrigin } from '../../config'
 import type { Page } from '../../types'
 
 interface NavItem {
@@ -62,6 +63,8 @@ interface Props {
 }
 
 export default function Sidebar({ current, onNavigate, healthy }: Props) {
+  const backendHost = new URL(getBackendHttpOrigin()).host
+
   return (
     <aside className="w-64 bg-slate-800 flex flex-col shrink-0 h-full">
       {/* Logo */}
@@ -124,7 +127,7 @@ export default function Sidebar({ current, onNavigate, healthy }: Props) {
             {healthy === null ? 'Verificando…' : healthy ? 'Conectado' : 'Sin conexión'}
           </span>
         </div>
-        <p className="mt-2 text-xs text-slate-500">localhost:8000</p>
+        <p className="mt-2 text-xs text-slate-500">{backendHost}</p>
       </div>
     </aside>
   )

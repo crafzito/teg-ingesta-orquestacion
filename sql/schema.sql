@@ -635,12 +635,28 @@ CREATE INDEX IF NOT EXISTS idx_raw_sd_data   ON raw.source_data USING gin(data);
 -- ETL — Control del pipeline
 -- ══════════════════════════════════════════════════════════════════
 
+CREATE TABLE IF NOT EXISTS etl.batches (
+    batch_id       VARCHAR(64)   PRIMARY KEY,
+    trigger_type   VARCHAR(20)   NOT NULL DEFAULT 'MANUAL',
+    scope          VARCHAR(20)   NOT NULL DEFAULT 'FULL_SCAN',
+    status         VARCHAR(20)   NOT NULL DEFAULT 'RUNNING',
+    data_dir       VARCHAR(500),
+    started_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    heartbeat_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    finished_at    TIMESTAMPTZ,
+    error_message  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_batches_status_started
+    ON etl.batches(status, started_at DESC);
+
 CREATE TABLE IF NOT EXISTS etl.executions (
     id             SERIAL        PRIMARY KEY,
+    batch_id       VARCHAR(64),
     source_key     VARCHAR(30)   NOT NULL,
     filepath       VARCHAR(500)  NOT NULL,
     file_hash      CHAR(32)      NOT NULL,
     started_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    heartbeat_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     finished_at    TIMESTAMPTZ,
     status         VARCHAR(10)   NOT NULL DEFAULT 'RUNNING',
     rows_read      INTEGER       DEFAULT 0,
@@ -650,7 +666,17 @@ CREATE TABLE IF NOT EXISTS etl.executions (
     rows_rejected  INTEGER       DEFAULT 0,
     error_message  TEXT
 );
+ALTER TABLE etl.executions
+    ADD COLUMN IF NOT EXISTS batch_id VARCHAR(64);
+ALTER TABLE etl.executions
+    ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ;
+UPDATE etl.executions
+SET heartbeat_at = COALESCE(heartbeat_at, finished_at, started_at)
+WHERE heartbeat_at IS NULL;
+ALTER TABLE etl.executions
+    ALTER COLUMN heartbeat_at SET DEFAULT NOW();
 CREATE INDEX IF NOT EXISTS idx_exec_source ON etl.executions(source_key, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exec_batch  ON etl.executions(batch_id, started_at DESC);
 
 CREATE TABLE IF NOT EXISTS etl.rejects (
     id             SERIAL        PRIMARY KEY,
@@ -661,6 +687,34 @@ CREATE TABLE IF NOT EXISTS etl.rejects (
     reject_reason  VARCHAR(500),
     created_at     TIMESTAMPTZ   DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS etl.batch_files (
+    id             SERIAL        PRIMARY KEY,
+    batch_id       VARCHAR(64)   NOT NULL REFERENCES etl.batches(batch_id) ON DELETE CASCADE,
+    source_key     VARCHAR(30),
+    filename       VARCHAR(255)  NOT NULL,
+    filepath       VARCHAR(500)  NOT NULL,
+    file_hash      CHAR(32),
+    size_bytes     BIGINT        NOT NULL DEFAULT 0,
+    modified_at    TIMESTAMPTZ,
+    status         VARCHAR(20)   NOT NULL DEFAULT 'RECEIVED',
+    execution_id   INTEGER       REFERENCES etl.executions(id),
+    started_at     TIMESTAMPTZ,
+    heartbeat_at   TIMESTAMPTZ,
+    finished_at    TIMESTAMPTZ,
+    rows_read      INTEGER       DEFAULT 0,
+    rows_inserted  INTEGER       DEFAULT 0,
+    rows_updated   INTEGER       DEFAULT 0,
+    rows_skipped   INTEGER       DEFAULT 0,
+    rows_rejected  INTEGER       DEFAULT 0,
+    error_message  TEXT,
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    UNIQUE (batch_id, filepath)
+);
+CREATE INDEX IF NOT EXISTS idx_batch_files_batch_status
+    ON etl.batch_files(batch_id, status, filename);
+CREATE INDEX IF NOT EXISTS idx_batch_files_source
+    ON etl.batch_files(batch_id, source_key);
 
 -- ── VISTA de estado (lo primero que mira soporte) ──────────────
 CREATE OR REPLACE VIEW etl.estado AS
@@ -686,6 +740,7 @@ ORDER BY e.source_key;
 -- ── VISTAS DE NEGOCIO para dashboards ─────────────────────────
 
 -- Ventas con todos los nombres resueltos (para reportes)
+DROP VIEW IF EXISTS fact.v_ventas_full;
 CREATE OR REPLACE VIEW fact.v_ventas_full AS
 SELECT
     v.fecha_doc,
@@ -732,6 +787,7 @@ LEFT JOIN cat.zona_ventas zv ON c.cod_zona_ventas = zv.cod
 LEFT JOIN cat.ramo        r  ON c.cod_ramo        = r.cod;
 
 -- CxC con nombres resueltos
+DROP VIEW IF EXISTS fact.v_cxc_full;
 CREATE OR REPLACE VIEW fact.v_cxc_full AS
 SELECT
     cx.fecha_venc,
@@ -765,6 +821,7 @@ LEFT JOIN cat.zona_ventas zv ON c.cod_zona_ventas = zv.cod
 LEFT JOIN cat.clase_doc   cd ON cx.cod_clase_doc  = cd.cod;
 
 -- Inventario disponible (solo stock con movimiento)
+DROP VIEW IF EXISTS fact.v_inventario_disponible;
 CREATE OR REPLACE VIEW fact.v_inventario_disponible AS
 SELECT
     i.tipo_inv,

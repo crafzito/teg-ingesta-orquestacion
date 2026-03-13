@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { BaseView, ViewColumn, ExportFilter, ExportResponse } from '../types'
 import { getBaseViews, getAnyTableColumns, exportView, buildExportUrl } from '../api'
+import { getBackendHttpOrigin } from '../config'
 
 // ── Helpers de tipo (mismos que ViewsPage) ─────────────────────────────────
 type ColKind = 'text' | 'number' | 'boolean' | 'date'
@@ -169,7 +170,7 @@ export default function ExportPage() {
 
   const absoluteUrl = selectedView
     ? buildExportUrl(viewName, exportParams, true)
-    : 'http://localhost:8000/api/export/{vista}?...'
+    : `${getBackendHttpOrigin()}/api/export/{vista}?...`
 
   const curlCmd = `curl -s "${absoluteUrl}"`
 

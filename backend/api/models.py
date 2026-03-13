@@ -115,6 +115,7 @@ class EtlDirectorySummary(BaseModel):
 
 class EtlExecutionItem(BaseModel):
     id: int
+    batch_id: str | None = None
     source_key: str
     filepath: str
     status: str
@@ -141,6 +142,46 @@ class EtlSourceStatus(BaseModel):
     error: str | None
 
 
+class EtlBatchFileItem(BaseModel):
+    id: int
+    batch_id: str
+    source_key: str | None
+    filename: str
+    filepath: str
+    status: str
+    started_at: datetime.datetime | None
+    finished_at: datetime.datetime | None
+    rows_read: int
+    rows_inserted: int
+    rows_updated: int
+    rows_skipped: int
+    rows_rejected: int
+    error_message: str | None
+
+
+class EtlBatchItem(BaseModel):
+    batch_id: str
+    trigger_type: str
+    scope: str
+    status: str
+    data_dir: str | None
+    started_at: datetime.datetime | None
+    heartbeat_at: datetime.datetime | None
+    finished_at: datetime.datetime | None
+    file_count: int
+    source_count: int
+    files_received: int
+    files_processing: int
+    files_success: int
+    files_failed: int
+    rows_read_total: int
+    rows_inserted_total: int
+    rows_updated_total: int
+    rows_rejected_total: int
+    error_message: str | None
+    files: list[EtlBatchFileItem] = Field(default_factory=list)
+
+
 class EtlMonitorSummary(BaseModel):
     monitored_directories: int
     total_files: int
@@ -158,6 +199,13 @@ class EtlMonitorSummary(BaseModel):
     sources_ok: int
     sources_failed: int
     sources_running: int
+    running_batches: int = 0
+    successful_batches: int = 0
+    failed_batches: int = 0
+    last_batch_id: str | None = None
+    last_batch_status: str | None = None
+    batch_id: str | None = None
+    batch_rows_total: int = 0
 
 
 class EtlMonitorResponse(BaseModel):
@@ -169,4 +217,20 @@ class EtlMonitorResponse(BaseModel):
     latest_execution: EtlExecutionItem | None
     recent_executions: list[EtlExecutionItem]
     source_status: list[EtlSourceStatus]
+    current_batches: list[EtlBatchItem] = Field(default_factory=list)
+    recent_batches: list[EtlBatchItem] = Field(default_factory=list)
     directories: list[EtlDirectorySummary]
+
+
+class EtlRunRequest(BaseModel):
+    data_dir: str = Field(default="data/input", max_length=500)
+    source: str | None = Field(default=None, max_length=50)
+    dry_run: bool = False
+    skip_raw: bool = False
+
+
+class EtlRunResponse(BaseModel):
+    status: str
+    message: str
+    pid: int | None = None
+    data_dir: str | None = None

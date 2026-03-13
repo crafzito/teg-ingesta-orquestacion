@@ -40,72 +40,54 @@ Contenido por defecto de `.env`:
 ```env
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=teg_etl
-DB_USER=etl_user
-DB_PASSWORD=etl_pass
-LOG_LEVEL=INFO
-BATCH_SIZE=1000
+DB_NAME=sap_etl
+DB_USER=postgres
+DB_PASSWORD=postgres
+SAP_CSV_DIR=data/input
 ```
 
-### 3. Levantar la base de datos
+### 3. Levantar todo con un solo comando (Windows)
 
-```bash
-docker-compose up -d
+```powershell
+.\start.ps1
 ```
 
-Esto inicia un contenedor PostgreSQL 16 accesible en `localhost:5432`.
+Esto prepara el entorno y levanta:
 
-Para verificar que esta corriendo:
+- PostgreSQL en Docker
+- Backend FastAPI en `http://localhost:8000`
+- Watcher ETL sobre `data/input/`
+- Frontend Vite en `http://localhost:5173`
 
-```bash
-docker-compose ps
+Para iniciar todo y correr ademas una carga ETL inicial:
+
+```powershell
+.\start.ps1 -ETL
 ```
 
-### 4. Instalar dependencias de Python
+Variantes utiles:
 
-```bash
-pip install -r requirements.txt
-```
+- `.\start.ps1 -NoFrontend` -> backend + ETL + postgres
+- `.\start.ps1 -NoWatcher` -> backend + frontend + postgres
+- `.\start.ps1 -SkipSchema` -> no reaplica `sql/schema.sql`
+- `.\start.ps1 -SkipDocker` -> asume que `sap_etl_postgres` ya existe y esta corriendo
+- `.\start.ps1 -BackendOnly` -> solo backend en foreground
 
-> Se recomienda usar un entorno virtual:
-> ```bash
-> python -m venv .venv
-> .venv\Scripts\activate        # Windows
-> source .venv/bin/activate     # Linux/Mac
-> pip install -r requirements.txt
-> ```
+Para detener los servicios lanzados en background:
 
-### 5. Instalar dependencias del frontend
-
-```bash
-cd frontend
-npm install
-cd ..
+```powershell
+.\stop.ps1
 ```
 
 ## Levantar el proyecto
 
-### Opcion A: Todos los servicios
+### Opcion A: Stack completo recomendado
 
-Abrir 3 terminales y ejecutar en cada una:
-
-**Terminal 1 - Base de datos:**
-```bash
-docker-compose up -d
+```powershell
+.\start.ps1
 ```
 
-**Terminal 2 - Backend API:**
-```bash
-uvicorn backend.main:app --reload --port 8000
-```
-
-**Terminal 3 - Frontend:**
-```bash
-cd frontend
-npm run dev
-```
-
-Una vez levantados los tres servicios:
+Una vez levantado el stack:
 - Frontend: http://localhost:5173
 - API: http://localhost:8000
 - API docs (Swagger): http://localhost:8000/docs
@@ -113,24 +95,23 @@ Una vez levantados los tres servicios:
 
 ### Opcion B: Solo ETL (sin interfaz web)
 
-```bash
-docker-compose up -d
-python -m etl.run --clientes "data/samples/Clientes Consumo - Hoja 1.csv" --ventas "data/samples/Copia de Ventas_Mes_Consumo - Copia de Hoja 1.csv" --batch-id batch_test
+```powershell
+.\start.ps1 -NoFrontend -ETL
 ```
 
 ### Opcion C: ETL en modo watch (automatico)
 
-Coloca archivos CSV en la carpeta `data/input/` con el formato:
-- `ventas_YYYYMMDD_HHMMSS.csv` (obligatorio)
-- `clientes_YYYYMMDD_HHMMSS.csv` (opcional)
+Si ya preparaste el entorno y solo quieres correr el watcher manualmente:
 
-Luego ejecuta:
-
-```bash
-python -m etl --watch
+```powershell
+.venv\Scripts\python.exe etl\watcher.py --dir data\input
 ```
 
-El watcher revisara la carpeta cada 5 minutos (configurable con `WATCH_POLL_SECONDS`).
+Para una corrida ETL manual unica:
+
+```powershell
+.venv\Scripts\python.exe etl\pipeline.py --dir data\input
+```
 
 ## Ejecutar tests
 
@@ -184,15 +165,12 @@ TEG/
 ├── backend/                # API REST (FastAPI)
 │   └── main.py             # Endpoints
 ├── etl/                    # Pipeline ETL
-│   ├── __main__.py          # Entry point (batch y watch)
-│   ├── config.py            # Configuracion desde .env
-│   ├── run.py               # Orquestacion del pipeline
+│   ├── pipeline.py          # Corrida batch del ETL
 │   ├── watcher.py           # Modo watch automatico
-│   ├── db/                  # Conexion y DDL
-│   ├── extract/             # Lectura de CSVs
-│   ├── transform/           # Limpieza y transformacion
-│   ├── load/                # Carga a BD (staging y core)
-│   └── quality/             # Validacion y metricas
+│   ├── config/              # Contratos y fuentes
+│   ├── cleaners/            # Transformaciones
+│   ├── loaders/             # Carga a PostgreSQL
+│   └── parsers/             # Parseo y helpers
 ├── frontend/               # Interfaz web (React + Vite)
 ├── sql/                    # Scripts DDL (001-008)
 ├── tests/                  # Tests unitarios (pytest)
@@ -203,6 +181,8 @@ TEG/
 ├── docs/                   # Documentacion adicional
 │   └── guide_prompt/       # Guias y ejemplos de prompts
 ├── .env.example            # Template de configuracion
+├── start.ps1               # Orquesta el stack local
+├── stop.ps1                # Detiene servicios locales
 ├── docker-compose.yml      # PostgreSQL containerizado
 └── requirements.txt        # Dependencias Python
 ```

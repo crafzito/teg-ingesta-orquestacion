@@ -93,11 +93,21 @@ def normalize_text(value: str) -> Optional[str]:
 
 
 def normalize_code(value: str) -> Optional[str]:
-    """Limpia código SAP: strip, uppercase implícito ya viene de SAP."""
+    """Limpia código SAP: strip + normaliza ceros a la izquierda en códigos numéricos.
+
+    SAP zero-padea los códigos numéricos (ej. KUNNR=0010000748) pero algunos
+    exports los entregan sin padding (ej. CLIENTES.CSV=10000748).
+    Para que la PK sea consistente, se eliminan los ceros iniciales.
+    """
     if not value:
         return None
     v = value.strip()
-    return v if v else None
+    if not v:
+        return None
+    # Si es puramente numérico, quitar ceros a la izquierda
+    if v.isdigit():
+        v = v.lstrip("0") or "0"
+    return v
 
 
 # ── HASH ──────────────────────────────────────────────────────────

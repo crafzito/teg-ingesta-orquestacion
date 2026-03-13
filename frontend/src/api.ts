@@ -7,7 +7,10 @@ import type {
   ExportResponse,
   ExportFilter,
   EtlMonitorResponse,
+  EtlRunRequest,
+  EtlRunResponse,
 } from './types'
+import { getBackendHttpOrigin } from './config'
 
 const BASE = '/api'
 
@@ -26,6 +29,15 @@ export async function checkHealth(): Promise<{ status: string }> {
 
 export async function getEtlMonitor(): Promise<EtlMonitorResponse> {
   const res = await fetch(`${BASE}/etl/monitor`)
+  return handleResponse(res)
+}
+
+export async function runEtl(params: EtlRunRequest = {}): Promise<EtlRunResponse> {
+  const res = await fetch(`${BASE}/etl/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
   return handleResponse(res)
 }
 
@@ -112,7 +124,7 @@ export function buildExportUrl(
     }
   }
   const path = `${BASE}/export/${encodeURIComponent(viewName)}?${sp.toString()}`
-  return absolute ? `http://localhost:8000${path}` : path
+  return absolute ? `${getBackendHttpOrigin()}${path}` : path
 }
 
 export async function exportView(

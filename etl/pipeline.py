@@ -27,6 +27,7 @@ import logging
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -39,11 +40,22 @@ from cleaners.transformers import transform_raw_ventas, transform_raw_clientes
 from loaders.loader   import (
     get_connection, read_csv,
     already_loaded, start_execution, finish_execution, log_reject,
+    BatchFileRecord,
+    complete_batch,
+    ensure_batch,
+    file_md5,
+    finish_batch_source,
+    skip_batch_source,
+    start_batch_source,
+    touch_batch,
+    update_batch_source_progress,
+    update_execution_progress,
     upsert_rows, upsert_catalog_v2, _merge_via_line_hash,
 )
 from parsers.parsers  import normalize_text, normalize_code, mock_code, pk_hash, row_hash
 from source_resolver import (
     build_source_group_hash,
+    match_source_keys,
     resolve_source_files,
     summarize_source_files,
 )
@@ -60,6 +72,7 @@ DSN = os.environ.get(
     "PG_DSN",
     "host=localhost dbname=sap_etl user=postgres password=postgres"
 )
+PROGRESS_EVERY_ROWS = 500
 
 
 def _get_source_files(source_key: str, data_dir: str):
@@ -80,6 +93,81 @@ def _iter_source_rows(source_key: str, data_dir: str):
         )
         for row in rows:
             yield source_file, row
+
+
+def _collect_batch_file_records(
+    data_dir: str,
+    batch_files: Optional[Iterable[str]],
+) -> list[BatchFileRecord]:
+    root = Path(data_dir)
+    filenames = sorted({name.strip() for name in (batch_files or []) if name and name.strip()})
+
+    if filenames:
+        candidates = [root / name for name in filenames]
+    else:
+        candidates = sorted(
+            (
+                item for item in root.iterdir()
+                if item.is_file() and item.suffix.lower() == ".csv"
+            ),
+            key=lambda item: item.name.upper(),
+        )
+
+    records: list[BatchFileRecord] = []
+    for path in candidates:
+        if not path.exists() or not path.is_file():
+            continue
+
+        matches = match_source_keys(path.name)
+        stat = path.stat()
+        records.append(
+            BatchFileRecord(
+                filename=path.name,
+                filepath=str(path.resolve()),
+                source_key=matches[0] if matches else None,
+                file_hash=file_md5(str(path.resolve())),
+                size_bytes=stat.st_size,
+                modified_at=datetime.fromtimestamp(
+                    stat.st_mtime,
+                    tz=timezone.utc,
+                ).astimezone(),
+                status="RECEIVED" if matches else "IGNORED",
+            )
+        )
+
+    return records
+
+
+def _run_tracked_source_step(
+    source_key: str,
+    action,
+    batch_id: Optional[str],
+    tracked_sources: set[str],
+    dry_run: bool,
+):
+    should_track = not dry_run and batch_id and source_key in tracked_sources
+
+    if should_track:
+        with get_connection(DSN) as conn:
+            start_batch_source(conn, batch_id, source_key)
+
+    try:
+        action()
+    except Exception as exc:
+        if should_track:
+            with get_connection(DSN) as conn:
+                finish_batch_source(
+                    conn,
+                    batch_id,
+                    source_key,
+                    "FAILED",
+                    error_msg=str(exc),
+                )
+        raise
+
+    if should_track:
+        with get_connection(DSN) as conn:
+            finish_batch_source(conn, batch_id, source_key, "SUCCESS")
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -430,14 +518,25 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
     schema, table = src_cfg["table"]
     fhash = build_source_group_hash(source_files)
     file_label = summarize_source_files(source_files)
+    exec_id = None
+    last_progress_row_num = 0
 
     # Nivel 1 de idempotencia: mismo archivo → skip total
     if not dry_run:
         with get_connection(DSN) as conn:
             if already_loaded(conn, source_key, fhash):
                 logger.info(f"[{source_key}] Sin cambios (mismo MD5) → skip")
+                if _BATCH_ID:
+                    skip_batch_source(
+                        conn,
+                        _BATCH_ID,
+                        source_key,
+                        "Sin cambios (mismo MD5)",
+                    )
                 return
-            exec_id = start_execution(conn, source_key, file_label, fhash)
+            exec_id = start_execution(conn, source_key, file_label, fhash, batch_id=_BATCH_ID)
+            if _BATCH_ID:
+                start_batch_source(conn, _BATCH_ID, source_key, execution_id=exec_id)
 
     logger.info(
         f"[{source_key}] Procesando {len(source_files)} archivo(s): "
@@ -480,6 +579,52 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
                     f"{source_file.filename}: {'; '.join(result.errors)}",
                 ))
 
+            if (
+                not dry_run
+                and exec_id is not None
+                and row_num - last_progress_row_num >= PROGRESS_EVERY_ROWS
+            ):
+                with get_connection(DSN) as progress_conn:
+                    update_execution_progress(
+                        progress_conn,
+                        exec_id,
+                        rows_read=row_num,
+                        rows_rejected=len(rejected),
+                    )
+                    if _BATCH_ID:
+                        update_batch_source_progress(
+                            progress_conn,
+                            _BATCH_ID,
+                            source_key,
+                            execution_id=exec_id,
+                            rows_read=row_num,
+                            rows_rejected=len(rejected),
+                        )
+                last_progress_row_num = row_num
+
+        if (
+            not dry_run
+            and exec_id is not None
+            and row_num > last_progress_row_num
+        ):
+            with get_connection(DSN) as progress_conn:
+                update_execution_progress(
+                    progress_conn,
+                    exec_id,
+                    rows_read=row_num,
+                    rows_rejected=len(rejected),
+                )
+                if _BATCH_ID:
+                    update_batch_source_progress(
+                        progress_conn,
+                        _BATCH_ID,
+                        source_key,
+                        execution_id=exec_id,
+                        rows_read=row_num,
+                        rows_rejected=len(rejected),
+                    )
+            last_progress_row_num = row_num
+
     logger.info(
         f"[{source_key}] {row_num} leídas | "
         f"{len(clean_rows)} válidas | {len(rejected)} rechazadas"
@@ -512,12 +657,36 @@ def load_fact(source_key: str, data_dir: str, dry_run: bool = False):
                 rows_skipped=stats.get("skipped", 0),
                 rows_rejected=len(rejected),
             )
+            if _BATCH_ID:
+                finish_batch_source(
+                    conn,
+                    _BATCH_ID,
+                    source_key,
+                    "SUCCESS",
+                    execution_id=exec_id,
+                    rows_read=row_num,
+                    rows_inserted=stats.get("inserted", 0),
+                    rows_updated=stats.get("updated", 0),
+                    rows_skipped=stats.get("skipped", 0),
+                    rows_rejected=len(rejected),
+                )
 
     except Exception as e:
         logger.error(f"[{source_key}] ERROR: {e}", exc_info=True)
         if not dry_run:
             with get_connection(DSN) as conn:
                 finish_execution(conn, exec_id, "FAILED", error_msg=str(e))
+                if _BATCH_ID:
+                    finish_batch_source(
+                        conn,
+                        _BATCH_ID,
+                        source_key,
+                        "FAILED",
+                        execution_id=exec_id,
+                        rows_read=row_num,
+                        rows_rejected=len(rejected),
+                        error_msg=str(e),
+                    )
         raise
 
 
@@ -597,6 +766,8 @@ def load_raw(data_dir: str, dry_run: bool = False):
                 psycopg2.extras.execute_values(cur, sql, values, page_size=500)
                 affected = cur.rowcount
             logger.info(f"  [{src_key}] raw legacy: {affected} procesados")
+            if _BATCH_ID:
+                touch_batch(conn, _BATCH_ID)
 
     # ── 6b: raw.source_data (JSONB genérico, todas las fuentes) ───
     logger.info("  ── raw.source_data (JSONB genérico) ──")
@@ -674,6 +845,8 @@ def load_raw(data_dir: str, dry_run: bool = False):
                 )
                 affected = cur.rowcount
             logger.info(f"  [{src_key}] raw genérico: {affected} procesados")
+            if _BATCH_ID:
+                touch_batch(conn, _BATCH_ID)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -681,6 +854,7 @@ def load_raw(data_dir: str, dry_run: bool = False):
 # ──────────────────────────────────────────────────────────────────
 
 _BATCH_ID = str(uuid.uuid4())
+_BATCH_SOURCE_KEYS: set[str] = set()
 
 
 def run(
@@ -688,35 +862,81 @@ def run(
     source_filter: Optional[str] = None,
     dry_run:       bool = False,
     skip_raw:      bool = False,
+    batch_id:      Optional[str] = None,
+    batch_trigger: str = "MANUAL",
+    batch_files:   Optional[list[str]] = None,
 ):
+    global _BATCH_ID, _BATCH_SOURCE_KEYS
+
+    _BATCH_ID = batch_id or str(uuid.uuid4())
     set_batch_id(_BATCH_ID)
+    batch_records = _collect_batch_file_records(data_dir, batch_files)
+    _BATCH_SOURCE_KEYS = {
+        record.source_key for record in batch_records if record.source_key
+    }
+
+    if not dry_run:
+        with get_connection(DSN) as conn:
+            ensure_batch(
+                conn,
+                batch_id=_BATCH_ID,
+                trigger_type=batch_trigger,
+                data_dir=data_dir,
+                files=batch_records,
+            )
 
     logger.info("=" * 60)
     logger.info(f"ETL Pipeline  batch={_BATCH_ID[:8]}")
-    logger.info(f"dir={data_dir}  dry_run={dry_run}")
+    logger.info(f"dir={data_dir}  dry_run={dry_run}  trigger={batch_trigger}")
+    if batch_records:
+        logger.info(
+            "Archivos del lote: %s",
+            ", ".join(record.filename for record in batch_records),
+        )
     logger.info("=" * 60)
 
-    if source_filter:
-        # Modo foco: cargar solo una fuente específica
-        logger.info(f"Modo foco: procesando solo {source_filter}")
-        load_fact(source_filter, data_dir, dry_run)
-        return
+    def _load_client_bundle():
+        load_dim_vendedor(data_dir, dry_run)
+        load_dim_cliente(data_dir, dry_run)
 
-    # Orden obligatorio: dims primero, luego hechos
-    load_catalogs(data_dir, dry_run)
-    load_dim_vendedor(data_dir, dry_run)
-    load_dim_producto(data_dir, dry_run)
-    load_dim_cliente(data_dir, dry_run)
+    try:
+        if source_filter:
+            logger.info(f"Modo foco: procesando solo {source_filter}")
+            load_fact(source_filter, data_dir, dry_run)
+        else:
+            load_catalogs(data_dir, dry_run)
+            _run_tracked_source_step(
+                "CLIENTES",
+                _load_client_bundle,
+                batch_id=_BATCH_ID,
+                tracked_sources=_BATCH_SOURCE_KEYS,
+                dry_run=dry_run,
+            )
+            load_dim_producto(data_dir, dry_run)
 
-    for source_key in FACT_LOAD_ORDER:
-        load_fact(source_key, data_dir, dry_run)
+            for current_source_key in FACT_LOAD_ORDER:
+                load_fact(current_source_key, data_dir, dry_run)
 
-    if not skip_raw:
-        load_raw(data_dir, dry_run)
+            if not skip_raw:
+                load_raw(data_dir, dry_run)
 
-    # Refrescar vistas materializadas para que Looker vea data actualizada
+            if not dry_run:
+                refresh_materialized_views()
+
+    except Exception as exc:
+        if not dry_run:
+            with get_connection(DSN) as conn:
+                complete_batch(
+                    conn,
+                    _BATCH_ID,
+                    error_msg=str(exc),
+                    fail_pending=True,
+                )
+        raise
+
     if not dry_run:
-        refresh_materialized_views()
+        with get_connection(DSN) as conn:
+            complete_batch(conn, _BATCH_ID)
 
     logger.info("=" * 60)
     logger.info("Pipeline completado.")
@@ -786,6 +1006,9 @@ Ejemplos:
     parser.add_argument("--dry-run",    action="store_true", help="Leer y validar sin escribir en BD")
     parser.add_argument("--skip-raw",   action="store_true", help="No cargar raw histórico")
     parser.add_argument("--reset-hash", default=None,  help="Forzar reprocesamiento de una fuente")
+    parser.add_argument("--batch-id",   default=None,  help="ID externo del lote ETL")
+    parser.add_argument("--batch-trigger", default="MANUAL", help="Origen del lote (MANUAL/WATCHER)")
+    parser.add_argument("--batch-file", action="append", default=None, help="Archivo integrante del lote; repetir por cada archivo")
     args = parser.parse_args()
 
     if args.reset_hash:
@@ -796,4 +1019,7 @@ Ejemplos:
             source_filter=args.source,
             dry_run=args.dry_run,
             skip_raw=args.skip_raw,
+            batch_id=args.batch_id,
+            batch_trigger=args.batch_trigger,
+            batch_files=args.batch_file,
         )

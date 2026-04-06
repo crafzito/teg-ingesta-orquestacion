@@ -31,9 +31,9 @@ export default function CxcPage() {
       {isLoading ? <LoadingSpinner /> : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <DonutChartCard title="Aging CxC" data={(aging ?? []).map((r) => ({ name: r.bucket, value: Number(r.total) }))} valueFormatter={(v) => formatCurrency(v)} />
+            <DonutChartCard title="Antigüedad CxC" data={(aging ?? []).map((r) => ({ name: r.bucket, value: Number(r.total) }))} valueFormatter={(v) => formatCurrency(v)} />
             <BarListCard title="Top Clientes por Saldo" data={(porCliente ?? []).map((r) => ({ name: r.nombre, value: Number(r.total) }))} valueFormatter={(v) => formatCurrency(v)} />
-            <BarChartCard title="Aging por Monto" data={(aging ?? []).map((r) => ({ bucket: r.bucket, Monto: Number(r.total) }))} index="bucket" categories={['Monto']} valueFormatter={(v) => formatCurrency(v)} />
+            <BarChartCard title="Antigüedad por Monto" data={(aging ?? []).map((r) => ({ bucket: r.bucket, Monto: Number(r.total) }))} index="bucket" categories={['Monto']} valueFormatter={(v) => formatCurrency(v)} />
           </div>
           <DataTable title="Detalle CxC" data={rows ?? []} columns={columns} isLoading={isLoading} />
         </>

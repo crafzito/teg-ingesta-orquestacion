@@ -26,7 +26,7 @@ export function ComposedChartCard({ title, data, index, bars, lines, valueFormat
             <Tooltip formatter={valueFormatter ? (v: number) => valueFormatter(v) : undefined} />
             <Legend />
             {bars.map((b) => (
-              <Bar key={b.key} dataKey={b.key} fill={b.color ?? '#006FEE'} radius={[4, 4, 0, 0]} />
+              <Bar key={b.key} dataKey={b.key} fill={b.color ?? '#091B6B'} radius={[4, 4, 0, 0]} />
             ))}
             {lines.map((l) => (
               <Line key={l.key} type="monotone" dataKey={l.key} stroke={l.color ?? '#F31260'} strokeWidth={2} dot={{ r: 3 }} />

@@ -23,7 +23,7 @@ export function KpiCard({ title, value, icon, trend }: KpiCardProps) {
               </div>
             )}
           </div>
-          <div className="ml-4 flex-shrink-0 p-3 rounded-xl bg-primary/10 text-primary">
+          <div className="ml-4 flex-shrink-0 p-3 rounded-xl bg-[#091B6B]/10 text-[#091B6B]">
             {icon}
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from '@heroui/react'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 
-const COLORS = ['#006FEE', '#17C964', '#F5A524']
+const COLORS = ['#091B6B', '#00972E', '#FF4E00']
 
 interface RadarChartCardProps {
   title: string

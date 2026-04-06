@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from '@heroui/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
-const COLORS = ['#006FEE', '#17C964', '#F5A524', '#F31260', '#7828C8']
+const COLORS = ['#091B6B', '#00972E', '#FF4E00', '#F31260', '#7828C8']
 
 interface LineChartCardProps {
   title: string

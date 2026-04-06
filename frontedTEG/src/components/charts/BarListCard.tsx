@@ -13,7 +13,7 @@ function truncate(str: string, max = 20): string {
   return str.length > max ? str.slice(0, max) + '...' : str
 }
 
-export function BarListCard({ title, data, valueFormatter, color = '#006FEE', maxItems = 10 }: BarListCardProps) {
+export function BarListCard({ title, data, valueFormatter, color = '#091B6B', maxItems = 10 }: BarListCardProps) {
   const sliced = data.slice(0, maxItems).map((d) => ({ ...d, short: truncate(d.name) }))
 
   return (

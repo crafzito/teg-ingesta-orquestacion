@@ -2,11 +2,11 @@
 # start.ps1 - Setup and launch the local TEG stack
 # ============================================================
 # Usage:
-#   .\start.ps1                       # Postgres + ETL watcher
+#   .\start.ps1                       # Postgres + ETL watcher + FastAPI backend
 #   .\start.ps1 -ETL                 # Same, plus one ETL batch run before watcher
-#   .\start.ps1 -WithBackend         # Also start FastAPI
+#   .\start.ps1 -WithBackend:$false  # Skip starting FastAPI
 #   .\start.ps1 -WithFrontend        # Also start Vite
-#   .\start.ps1 -WithBackend -WithFrontend
+#   .\start.ps1 -WithFrontend
 #   .\start.ps1 -SkipDocker    # Assume dockerized Postgres already exists
 #   .\start.ps1 -SkipSchema    # Do not reapply sql/schema.sql
 #   .\start.ps1 -BackendOnly   # Only uvicorn in foreground
@@ -21,7 +21,7 @@ param(
     [switch]$SkipSchema,
     [switch]$ETL,
     [switch]$BackendOnly,
-    [switch]$WithBackend,
+    [bool]$WithBackend = $true,
     [switch]$WithFrontend,
     [switch]$NoFrontend,
     [switch]$NoWatcher,
@@ -305,7 +305,7 @@ function Start-ManagedProcess {
         -RedirectStandardError $stderrLog `
         -PassThru
 
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 5
     $process.Refresh()
     if ($process.HasExited) {
         $lines = @()
@@ -365,9 +365,11 @@ function Wait-ForHttpReady {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         try {
-            Invoke-WebRequest -Uri $Url -TimeoutSec 3 | Out-Null
-            Write-Ok "$DisplayName listo"
-            return
+            $statusCode = (curl.exe -s -o NUL -w "%{http_code}" --connect-timeout 3 $Url) 2>$null
+            if ($statusCode -eq "200") {
+                Write-Ok "$DisplayName listo"
+                return
+            }
         } catch {
         }
 

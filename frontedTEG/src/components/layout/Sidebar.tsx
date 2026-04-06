@@ -3,6 +3,7 @@ import { Button } from '@heroui/react'
 import {
   LayoutDashboard, TrendingUp, CreditCard, Wallet,
   Package, Factory, ShoppingCart, Users, Box, ChevronLeft,
+  Activity,
 } from 'lucide-react'
 import { useUiStore } from '../../stores/uiStore'
 
@@ -36,57 +37,111 @@ const NAV_GROUPS = [
       { to: '/productos', icon: Box, label: 'Productos' },
     ],
   },
+  {
+    label: 'Sistema',
+    items: [
+      { to: '/etl', icon: Activity, label: 'Monitor ETL' },
+    ],
+  },
 ]
 
 export function Sidebar() {
-  const { sidebarOpen, toggleSidebar } = useUiStore()
+  const { sidebarOpen, toggleSidebar, isMobile, setSidebarOpen, closeSidebarOnMobile } = useUiStore()
+
+  // On mobile: sidebar is always w-64 (full expanded) when open, hidden off-screen when closed
+  // On desktop: sidebar toggles between w-64 (expanded) and w-16 (collapsed icons)
+  const sidebarWidth = isMobile ? 'w-64' : (sidebarOpen ? 'w-64' : 'w-16')
+
+  // On mobile: use translateX to slide in/out
+  const mobileTransform = isMobile
+    ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full')
+    : ''
+
+  // Show expanded content (labels, group headers) when:
+  // - on mobile (always expanded when visible)
+  // - on desktop when sidebarOpen is true
+  const showLabels = isMobile || sidebarOpen
 
   return (
-    <aside
-      className={`fixed left-0 top-0 z-30 flex h-screen flex-col bg-content1 border-r border-divider transition-all duration-300 ${
-        sidebarOpen ? 'w-64' : 'w-16'
-      }`}
-    >
-      <div className="flex h-16 items-center justify-between px-4 border-b border-divider">
-        {sidebarOpen && (
-          <span className="text-lg font-bold text-primary tracking-tight">TEG Analytics</span>
-        )}
-        <Button isIconOnly size="sm" variant="light" onPress={toggleSidebar}>
-          <ChevronLeft className={`h-5 w-5 transition-transform ${!sidebarOpen ? 'rotate-180' : ''}`} />
-        </Button>
-      </div>
+    <>
+      {/* Backdrop overlay for mobile */}
+      {isMobile && sidebarOpen && (
+        <div
+          className="fixed inset-0 z-[35] bg-black/50 transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
-      <nav className="flex-1 overflow-y-auto py-4 px-2">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="mb-4">
-            {sidebarOpen && (
-              <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-default-400">
-                {group.label}
-              </p>
+      <aside
+        className={`fixed left-0 top-0 flex h-screen flex-col transition-all duration-300 ${sidebarWidth} ${mobileTransform} ${
+          isMobile ? 'z-40' : 'z-30'
+        }`}
+        style={{ backgroundColor: '#091B6B' }}
+      >
+        <div className="flex h-16 items-center justify-between px-4 border-b border-white/10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src="/img/logo_380.png"
+              alt="Proyectos PET"
+              className="h-9 w-auto flex-shrink-0"
+            />
+            {showLabels && (
+              <div className="flex flex-col leading-tight min-w-0">
+                <span className="text-sm font-bold text-white tracking-wide">Proyectos</span>
+                <span className="text-lg font-extrabold tracking-wider" style={{ color: '#FF4E00' }}>PET</span>
+              </div>
             )}
-            <ul className="space-y-1">
-              {group.items.map((item) => (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    end={item.to === '/'}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                        isActive
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-default-600 hover:bg-default-100'
-                      } ${!sidebarOpen ? 'justify-center px-0' : ''}`
-                    }
-                  >
-                    <item.icon className="h-5 w-5 flex-shrink-0" />
-                    {sidebarOpen && <span>{item.label}</span>}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
           </div>
-        ))}
-      </nav>
-    </aside>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={isMobile ? () => setSidebarOpen(false) : toggleSidebar}
+            className="text-white/70 hover:text-white hover:bg-white/10 flex-shrink-0"
+          >
+            <ChevronLeft className={`h-5 w-5 transition-transform ${
+              !isMobile && !sidebarOpen ? 'rotate-180' : ''
+            }`} />
+          </Button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-4 px-2">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mb-4">
+              {showLabels && (
+                <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {group.label}
+                </p>
+              )}
+              <ul className="space-y-1">
+                {group.items.map((item) => (
+                  <li key={item.to}>
+                    <NavLink
+                      to={item.to}
+                      end={item.to === '/'}
+                      onClick={closeSidebarOnMobile}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                          isActive
+                            ? 'text-white shadow-sm'
+                            : 'text-white/70 hover:text-white hover:bg-white/10'
+                        } ${!showLabels ? 'justify-center px-0' : ''}`
+                      }
+                      style={({ isActive }) =>
+                        isActive ? { backgroundColor: '#FF4E00' } : undefined
+                      }
+                    >
+                      <item.icon className="h-5 w-5 flex-shrink-0" />
+                      {showLabels && <span>{item.label}</span>}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </aside>
+    </>
   )
 }

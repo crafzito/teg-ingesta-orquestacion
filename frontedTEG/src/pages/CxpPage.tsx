@@ -30,9 +30,9 @@ export default function CxpPage() {
       {isLoading ? <LoadingSpinner /> : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <DonutChartCard title="Aging CxP" data={(aging ?? []).map((r) => ({ name: r.bucket, value: Number(r.total) }))} valueFormatter={(v) => formatCurrency(v)} />
+            <DonutChartCard title="Antigüedad CxP" data={(aging ?? []).map((r) => ({ name: r.bucket, value: Number(r.total) }))} valueFormatter={(v) => formatCurrency(v)} />
             <BarListCard title="Top Proveedores por Saldo" data={(porProveedor ?? []).map((r) => ({ name: r.nombre, value: Number(r.total) }))} valueFormatter={(v) => formatCurrency(v)} />
-            <BarChartCard title="Aging por Monto" data={(aging ?? []).map((r) => ({ bucket: r.bucket, Monto: Number(r.total) }))} index="bucket" categories={['Monto']} valueFormatter={(v) => formatCurrency(v)} />
+            <BarChartCard title="Antigüedad por Monto" data={(aging ?? []).map((r) => ({ bucket: r.bucket, Monto: Number(r.total) }))} index="bucket" categories={['Monto']} valueFormatter={(v) => formatCurrency(v)} />
           </div>
           <DataTable title="Detalle CxP" data={rows ?? []} columns={columns} isLoading={isLoading} />
         </>

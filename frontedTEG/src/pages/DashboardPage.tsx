@@ -88,7 +88,7 @@ export default function DashboardPage() {
               <Tab key="finanzas" title="Finanzas">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <DonutChartCard
-                    title="Aging CxC"
+                    title="Antigüedad CxC"
                     data={charts.agingCxc}
                     valueFormatter={(v) => formatCurrency(v)}
                   />
@@ -96,7 +96,7 @@ export default function DashboardPage() {
                     title="CxC Total vs Vencida"
                     data={charts.agingCxc.map((r) => ({ bucket: r.name, Monto: r.value }))}
                     index="bucket"
-                    bars={[{ key: 'Monto', color: '#006FEE' }]}
+                    bars={[{ key: 'Monto', color: '#091B6B' }]}
                     lines={[]}
                     valueFormatter={(v) => formatCurrency(v)}
                   />

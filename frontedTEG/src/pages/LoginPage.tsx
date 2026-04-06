@@ -30,7 +30,12 @@ export default function LoginPage() {
     <div className="w-full max-w-md">
       <Card shadow="lg" className="p-2">
         <CardHeader className="flex-col items-center pt-6 pb-0">
-          <h1 className="text-3xl font-bold text-primary">TEG Analytics</h1>
+          <img
+            src="/img/logo_380.png"
+            alt="Proyectos PET"
+            className="h-20 w-auto mb-3"
+          />
+          <h1 className="text-2xl font-bold" style={{ color: '#091B6B' }}>Proyectos PET</h1>
           <p className="mt-2 text-sm text-default-500">Ingrese sus credenciales</p>
         </CardHeader>
         <CardBody className="px-8 pb-8 pt-6">
@@ -64,11 +69,12 @@ export default function LoginPage() {
             />
             <Button
               type="submit"
-              color="primary"
               isLoading={loading}
               fullWidth
               size="lg"
               startContent={!loading ? <LogIn className="h-4 w-4" /> : undefined}
+              className="text-white font-semibold"
+              style={{ backgroundColor: '#FF4E00' }}
             >
               Iniciar Sesion
             </Button>

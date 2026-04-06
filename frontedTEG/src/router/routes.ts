@@ -9,6 +9,7 @@ const ProduccionPage = lazy(() => import('../pages/ProduccionPage'))
 const PedidosPage = lazy(() => import('../pages/PedidosPage'))
 const ClientesPage = lazy(() => import('../pages/ClientesPage'))
 const ProductosPage = lazy(() => import('../pages/ProductosPage'))
+const EtlMonitorPage = lazy(() => import('../pages/EtlMonitorPage'))
 
 export const appRoutes = [
   { path: '/', element: DashboardPage },
@@ -20,4 +21,5 @@ export const appRoutes = [
   { path: '/pedidos', element: PedidosPage },
   { path: '/clientes', element: ClientesPage },
   { path: '/productos', element: ProductosPage },
+  { path: '/etl', element: EtlMonitorPage },
 ] as const

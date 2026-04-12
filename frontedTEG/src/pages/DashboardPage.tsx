@@ -3,6 +3,17 @@ import {
 } from 'lucide-react'
 import { Tabs, Tab } from '@heroui/react'
 import { useMemo } from 'react'
+import {
+  AreaChart as TremorAreaChart,
+  BarChart as TremorBarChart,
+  BarList as TremorBarList,
+  BadgeDelta,
+  Card as TremorCard,
+  Flex as TremorFlex,
+  Metric as TremorMetric,
+  Text as TremorText,
+  Title as TremorTitle,
+} from '@tremor/react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { FilterBar } from '../components/ui/FilterBar'
 import { KpiCard } from '../components/ui/KpiCard'
@@ -13,8 +24,6 @@ import { BarListCard } from '../components/charts/BarListCard'
 import { BarChartCard } from '../components/charts/BarChartCard'
 import { LineChartCard } from '../components/charts/LineChartCard'
 import { ComposedChartCard } from '../components/charts/ComposedChartCard'
-import { HeatmapChartCard } from '../components/charts/HeatmapChartCard'
-import { TreemapChartCard } from '../components/charts/TreemapChartCard'
 import { useDashboardKPIs, useDashboardCharts } from '../api/hooks/useDashboardKPIs'
 import { useUiStore } from '../stores/uiStore'
 import { formatCompactCurrency, formatCompactNumber, formatCurrency, formatNumber, sociedadLabel } from '../lib/formatters'
@@ -66,30 +75,40 @@ export default function DashboardPage() {
     [charts.ventasSociedad, selectedSociedadLabel],
   )
   const orderStatusLabels = ['Abiertas', 'Liberadas', 'Cerradas']
-  const orderCenterLabels = useMemo(
-    () => charts.ordenesCentro.map((row) => centerLabel(row.centro)),
+  const trendValueForPoint = (point?: Record<string, string | number>) => (
+    salesTrendCategories.reduce((total, category) => total + Number(point?.[category] ?? 0), 0)
+  )
+  const latestTrendPoint = salesTrendData[salesTrendData.length - 1] as Record<string, string | number> | undefined
+  const previousTrendPoint = salesTrendData[salesTrendData.length - 2] as Record<string, string | number> | undefined
+  const currentTrendTotal = trendValueForPoint(latestTrendPoint)
+  const previousTrendTotal = trendValueForPoint(previousTrendPoint)
+  const trendDelta = previousTrendTotal > 0
+    ? ((currentTrendTotal - previousTrendTotal) / previousTrendTotal) * 100
+    : 0
+  const trendDeltaType = trendDelta > 0 ? 'increase' : trendDelta < 0 ? 'decrease' : 'unchanged'
+  const topClientsBars = useMemo(
+    () => charts.topClientes.map((item, index) => ({
+      name: item.name,
+      value: item.value,
+      color: index === 0 ? 'blue' : index < 3 ? 'cyan' : 'slate',
+    })),
+    [charts.topClientes],
+  )
+  const orderStatusChartData = useMemo(
+    () => charts.ordenesCentro
+      .map((row) => ({
+        centro: centerLabel(row.centro),
+        Abiertas: Number(row.abiertas),
+        Liberadas: Number(row.liberadas),
+        Cerradas: Number(row.cerradas),
+        total: Number(row.abiertas) + Number(row.liberadas) + Number(row.cerradas),
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6),
     [charts.ordenesCentro],
   )
-  const orderHeatmap = useMemo(
-    () => charts.ordenesCentro.flatMap((row) => ([
-      {
-        x: centerLabel(row.centro),
-        y: 'Abiertas',
-        value: Number(row.abiertas),
-      },
-      {
-        x: centerLabel(row.centro),
-        y: 'Liberadas',
-        value: Number(row.liberadas),
-      },
-      {
-        x: centerLabel(row.centro),
-        y: 'Cerradas',
-        value: Number(row.cerradas),
-      },
-    ])),
-    [charts.ordenesCentro],
-  )
+  const orderLoadVisible = orderStatusChartData.reduce((total, row) => total + row.total, 0)
+  const topCustomerTotal = topClientsBars[0]?.value ?? 0
 
   return (
     <div>
@@ -122,32 +141,93 @@ export default function DashboardPage() {
                     </div>
                     <h2 className="mt-3 text-xl font-semibold text-foreground">Nuevos gráficos ejecutivos</h2>
                     <p className="mt-1 text-sm text-default-500">
-                      Una lectura rápida de concentración comercial y carga operativa por centro.
+                      Una lectura rápida del pulso comercial y la presión operativa con una capa visual más cuidada.
                     </p>
                   </div>
                   <p className="max-w-xl text-sm text-default-500">
-                    Estos gráficos usan Apache ECharts para sumar visualizaciones más modernas sin reemplazar el resto del dashboard.
+                    Esta sección usa Tremor para sumar gráficos más limpios sin tocar los charts del resto del dashboard.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <HeatmapChartCard
-                    title="Mapa de calor de órdenes"
-                    subtitle="Resalta qué centros concentran el mayor volumen por estatus."
-                    xLabels={orderCenterLabels}
-                    yLabels={orderStatusLabels}
-                    data={orderHeatmap}
-                    valueFormatter={(v) => formatNumber(v)}
-                    compactValueFormatter={(v) => formatCompactNumber(v)}
-                    insightLabel="Mayor carga"
-                  />
-                  <TreemapChartCard
-                    title="Concentración de clientes"
-                    subtitle="Muestra qué cuentas explican más ventas del trimestre reciente."
-                    data={charts.topClientes}
-                    valueFormatter={(v) => formatCurrency(v)}
-                    compactValueFormatter={(v) => formatCompactCurrency(v)}
-                  />
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)] gap-6">
+                  <TremorCard
+                    decoration="top"
+                    decorationColor="indigo"
+                    className="border border-white/10 bg-white/90 shadow-lg shadow-slate-950/5 backdrop-blur dark:border-white/10 dark:bg-slate-950/75"
+                  >
+                    <TremorFlex justifyContent="between" alignItems="start" className="gap-4">
+                      <div>
+                        <TremorText>Pulso comercial</TremorText>
+                        <TremorTitle className="mt-1">Ventas recientes con lectura continua</TremorTitle>
+                        <TremorText className="mt-2">
+                          {selectedSociedadLabel
+                            ? `Evolución mensual para ${selectedSociedadLabel}.`
+                            : 'Comparativa de ventas mensuales entre las sociedades visibles.'}
+                        </TremorText>
+                      </div>
+                      <BadgeDelta deltaType={trendDeltaType}>
+                        {formatNumber(Math.abs(trendDelta), 1)}%
+                      </BadgeDelta>
+                    </TremorFlex>
+                    <TremorMetric className="mt-4">{formatCurrency(currentTrendTotal)}</TremorMetric>
+                    <TremorText className="mt-1">
+                      Último corte disponible {previousTrendTotal > 0 ? `vs ${formatCurrency(previousTrendTotal)} anterior` : ''}
+                    </TremorText>
+                    <TremorAreaChart
+                      className="mt-6 h-72"
+                      data={salesTrendData}
+                      index="mes"
+                      categories={salesTrendCategories}
+                      colors={selectedSociedadLabel ? ['blue'] : ['blue', 'cyan', 'violet']}
+                      valueFormatter={(value: number) => formatCompactCurrency(value)}
+                      showGradient
+                      showLegend
+                      curveType="monotone"
+                      yAxisWidth={64}
+                      noDataText="Sin datos para este filtro"
+                    />
+                  </TremorCard>
+
+                  <div className="grid grid-cols-1 gap-6">
+                    <TremorCard
+                      decoration="top"
+                      decorationColor="cyan"
+                      className="border border-white/10 bg-white/90 shadow-lg shadow-slate-950/5 backdrop-blur dark:border-white/10 dark:bg-slate-950/75"
+                    >
+                      <TremorText>Clientes que mueven el periodo</TremorText>
+                      <TremorTitle className="mt-1">Concentración comercial</TremorTitle>
+                      <TremorMetric className="mt-4">{formatCurrency(topCustomerTotal)}</TremorMetric>
+                      <TremorText className="mt-1">Mayor cuenta visible en los últimos 90 días.</TremorText>
+                      <TremorBarList
+                        className="mt-6"
+                        data={topClientsBars}
+                        valueFormatter={(value: number) => formatCompactCurrency(value)}
+                        sortOrder="descending"
+                      />
+                    </TremorCard>
+
+                    <TremorCard
+                      decoration="top"
+                      decorationColor="emerald"
+                      className="border border-white/10 bg-white/90 shadow-lg shadow-slate-950/5 backdrop-blur dark:border-white/10 dark:bg-slate-950/75"
+                    >
+                      <TremorText>Carga operativa</TremorText>
+                      <TremorTitle className="mt-1">Centros con más presión</TremorTitle>
+                      <TremorMetric className="mt-4">{formatNumber(orderLoadVisible)}</TremorMetric>
+                      <TremorText className="mt-1">Top 6 centros por órdenes abiertas, liberadas y cerradas.</TremorText>
+                      <TremorBarChart
+                        className="mt-6 h-72"
+                        data={orderStatusChartData}
+                        index="centro"
+                        categories={orderStatusLabels}
+                        colors={['amber', 'blue', 'emerald']}
+                        stack
+                        valueFormatter={(value: number) => formatCompactNumber(value)}
+                        yAxisWidth={48}
+                        noDataText="Sin datos para este filtro"
+                      />
+                    </TremorCard>
+                  </div>
                 </div>
               </section>
 

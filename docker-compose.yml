@@ -7,9 +7,115 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sap_etl"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  db-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./sql:/sql:ro
+    command: >
+      sh -c "psql -h postgres -U postgres -d sap_etl -f /sql/schema.sql
+      && psql -h postgres -U postgres -d sap_etl -f /sql/auth.sql"
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      seed-users:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sap_etl
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      PG_DSN: host=postgres port=5432 dbname=sap_etl user=postgres password=postgres
+      SAP_CSV_DIR: /app/data/input
+    ports:
+      - "${BACKEND_HOST_PORT:-8011}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.runtime:/app/.runtime
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+    restart: unless-stopped
+
+  seed-users:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sap_etl
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    command: ["python", "backend/seed_users.py"]
+    restart: "no"
+
+  watcher:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      seed-users:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sap_etl
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      PG_DSN: host=postgres port=5432 dbname=sap_etl user=postgres password=postgres
+      SAP_CSV_DIR: /app/data/input
+    command: ["python", "etl/watcher.py", "--dir", "/app/data/input", "--debounce", "5"]
+    volumes:
+      - ./data:/app/data
+      - ./.runtime:/app/.runtime
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontedTEG
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    ports:
+      - "${FRONTEND_HOST_PORT:-4173}:5176"
     restart: unless-stopped
 
 volumes:

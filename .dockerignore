@@ -1,0 +1,12 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+.runtime
+__pycache__
+*.pyc
+data/generated
+data/input_backup*
+frontedTEG/node_modules
+frontedTEG/dist
+frontedTEG/.vite

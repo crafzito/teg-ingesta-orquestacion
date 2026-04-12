@@ -59,7 +59,7 @@ export function useDashboardCharts() {
     queries: [
       {
         queryKey: ['chart', 'ventas-mensuales', soc],
-        queryFn: () => fetchRows<{ mes: string; sociedad_1000: number; sociedad_1200: number; sociedad_1300: number }>(chartVentasMensuales(soc)),
+        queryFn: () => fetchRows<{ mes: string; sociedad_1000?: number; sociedad_1200?: number; sociedad_1300?: number; total?: number }>(chartVentasMensuales(soc)),
         staleTime: STALE_TIME,
       },
       {

@@ -16,23 +16,54 @@ import { ComposedChartCard } from '../components/charts/ComposedChartCard'
 import { HeatmapChartCard } from '../components/charts/HeatmapChartCard'
 import { TreemapChartCard } from '../components/charts/TreemapChartCard'
 import { useDashboardKPIs, useDashboardCharts } from '../api/hooks/useDashboardKPIs'
+import { useUiStore } from '../stores/uiStore'
 import { formatCompactCurrency, formatCompactNumber, formatCurrency, formatNumber, sociedadLabel } from '../lib/formatters'
 
 export default function DashboardPage() {
   const kpis = useDashboardKPIs()
   const charts = useDashboardCharts()
+  const selectedSociedad = useUiStore((s) => s.selectedSociedad)
   const centerLabel = (value: unknown) => {
     const normalized = String(value ?? '').trim()
     return normalized && normalized.toLowerCase() !== 'null' ? normalized : 'Sin centro'
   }
+  const selectedSociedadLabel = selectedSociedad ? sociedadLabel(selectedSociedad) : null
   const monthlySalesMatrix = useMemo(
     () => charts.ventasMensuales.map((r) => ({
       mes: r.mes,
-      sociedad_1000: Number(r.sociedad_1000),
-      sociedad_1200: Number(r.sociedad_1200),
-      sociedad_1300: Number(r.sociedad_1300),
+      sociedad_1000: Number(r.sociedad_1000 ?? 0),
+      sociedad_1200: Number(r.sociedad_1200 ?? 0),
+      sociedad_1300: Number(r.sociedad_1300 ?? 0),
+      total: Number((r as { total?: number }).total ?? 0),
     })),
     [charts.ventasMensuales],
+  )
+  const salesTrendCategories = selectedSociedadLabel
+    ? [selectedSociedadLabel]
+    : ['Pharsana', 'Ampofrasca', 'Proy. PET']
+  const salesTrendData = useMemo(
+    () => monthlySalesMatrix.map((r) => (
+      selectedSociedadLabel
+        ? {
+            mes: r.mes,
+            [selectedSociedadLabel]: r.total,
+          }
+        : {
+            mes: r.mes,
+            Pharsana: r.sociedad_1000,
+            Ampofrasca: r.sociedad_1200,
+            'Proy. PET': r.sociedad_1300,
+          }
+    )),
+    [monthlySalesMatrix, selectedSociedadLabel],
+  )
+  const salesComparisonData = useMemo(
+    () => charts.ventasSociedad.map((r) => ({
+      sociedad: selectedSociedadLabel || sociedadLabel(String(r.sociedad || 'Sin clasificar')),
+      'Mes Actual': Number(r.mes_actual),
+      'Mes Anterior': Number(r.mes_anterior),
+    })),
+    [charts.ventasSociedad, selectedSociedadLabel],
   )
   const orderStatusLabels = ['Abiertas', 'Liberadas', 'Cerradas']
   const orderCenterLabels = useMemo(
@@ -125,23 +156,14 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <AreaChartCard
                       title="Ventas Mensuales (12 meses)"
-                      data={monthlySalesMatrix.map((r) => ({
-                        mes: r.mes,
-                        Pharsana: r.sociedad_1000,
-                        Ampofrasca: r.sociedad_1200,
-                        'Proy. PET': r.sociedad_1300,
-                      }))}
+                      data={salesTrendData}
                       index="mes"
-                      categories={['Pharsana', 'Ampofrasca', 'Proy. PET']}
+                      categories={salesTrendCategories}
                       valueFormatter={(v) => formatCurrency(v)}
                     />
                     <BarChartCard
                       title="Ventas por Sociedad (Actual vs Anterior)"
-                      data={charts.ventasSociedad.map((r) => ({
-                        sociedad: sociedadLabel(String(r.sociedad)),
-                        'Mes Actual': Number(r.mes_actual),
-                        'Mes Anterior': Number(r.mes_anterior),
-                      }))}
+                      data={salesComparisonData}
                       index="sociedad"
                       categories={['Mes Actual', 'Mes Anterior']}
                       valueFormatter={(v) => formatCurrency(v)}
@@ -153,14 +175,9 @@ export default function DashboardPage() {
                     />
                     <LineChartCard
                       title="Tendencia Ventas por Sociedad"
-                      data={monthlySalesMatrix.map((r) => ({
-                        mes: r.mes,
-                        Pharsana: r.sociedad_1000,
-                        Ampofrasca: r.sociedad_1200,
-                        'Proy. PET': r.sociedad_1300,
-                      }))}
+                      data={salesTrendData}
                       index="mes"
-                      categories={['Pharsana', 'Ampofrasca', 'Proy. PET']}
+                      categories={salesTrendCategories}
                       valueFormatter={(v) => formatCurrency(v)}
                     />
                   </div>

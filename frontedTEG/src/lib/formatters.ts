@@ -10,10 +10,28 @@ export function formatCurrency(value: number, currency = 'USD'): string {
   }).format(value)
 }
 
+export function formatCompactCurrency(value: number, currency = 'USD'): string {
+  return new Intl.NumberFormat('es-VE', {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  }).format(value)
+}
+
 export function formatNumber(value: number, decimals = 0): string {
   return new Intl.NumberFormat('es-VE', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+  }).format(value)
+}
+
+export function formatCompactNumber(value: number): string {
+  return new Intl.NumberFormat('es-VE', {
+    notation: 'compact',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
   }).format(value)
 }
 

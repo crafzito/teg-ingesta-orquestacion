@@ -41,6 +41,37 @@ function Write-Ok { param([string]$Message) Write-Host "    [OK] $Message" -Fore
 function Write-Warn { param([string]$Message) Write-Host "    [!]  $Message" -ForegroundColor Yellow }
 function Write-Fail { param([string]$Message) Write-Host "    [X]  $Message" -ForegroundColor Red }
 
+function Test-PortInUse {
+    param([int]$Port)
+
+    if ($Port -le 0) {
+        return $false
+    }
+
+    try {
+        $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop
+        return @($listeners).Count -gt 0
+    } catch {
+        return $false
+    }
+}
+
+function Find-AvailablePort {
+    param(
+        [int]$StartPort,
+        [int]$Attempts = 25
+    )
+
+    for ($offset = 0; $offset -lt $Attempts; $offset++) {
+        $candidate = $StartPort + $offset
+        if (-not (Test-PortInUse -Port $candidate)) {
+            return $candidate
+        }
+    }
+
+    throw "No se encontro un puerto libre a partir de $StartPort."
+}
+
 function Load-Env {
     $envFile = Join-Path $Root ".env"
     if (-not (Test-Path $envFile)) {
@@ -150,6 +181,43 @@ function Invoke-NativeOrThrow {
     }
 
     return $output
+}
+
+function Get-ComposePostgresContainerRef {
+    $ref = docker compose ps -q postgres 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    $value = "$ref".Trim()
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
+
+    return $value
+}
+
+function Get-ContainerHostPort {
+    param(
+        [string]$ContainerRef,
+        [string]$ContainerPort = "5432/tcp"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ContainerRef)) {
+        return $null
+    }
+
+    $inspect = docker inspect --format "{{with index .NetworkSettings.Ports `"$ContainerPort`"}}{{(index . 0).HostPort}}{{end}}" $ContainerRef 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    $value = "$inspect".Trim()
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
+
+    return $value
 }
 
 function Read-TrackedProcesses {
@@ -396,27 +464,40 @@ function Assert-DockerReady {
 }
 
 function Assert-PostgresContainer {
+    param([string]$ContainerRef)
+
     if ($DryRun) {
         return
     }
 
-    docker inspect sap_etl_postgres *> $null
+    if ([string]::IsNullOrWhiteSpace($ContainerRef)) {
+        throw "No se encontro el contenedor postgres del stack TEG. Ejecuta '.\start.ps1' sin -SkipDocker."
+    }
+
+    docker inspect $ContainerRef *> $null
     if ($LASTEXITCODE -ne 0) {
-        throw "No se encontro el contenedor 'sap_etl_postgres'. Ejecuta '.\start.ps1' sin -SkipDocker."
+        throw "No se encontro el contenedor postgres del stack TEG ($ContainerRef). Ejecuta '.\start.ps1' sin -SkipDocker."
     }
 }
 
 function Wait-ForPostgresReady {
-    param([string]$DbUser)
+    param(
+        [string]$DbUser,
+        [string]$ContainerRef
+    )
 
     if ($DryRun) {
         return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ContainerRef)) {
+        throw "No se puede esperar PostgreSQL sin referencia de contenedor."
     }
 
     Write-Host "    Esperando que PostgreSQL este listo..." -NoNewline
     $ready = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
-        $result = docker exec sap_etl_postgres pg_isready -U $DbUser 2>&1
+        $result = docker exec $ContainerRef pg_isready -U $DbUser 2>&1
         if ($result -match "accepting connections") {
             $ready = $true
             break
@@ -438,13 +519,45 @@ if (-not $PSBoundParameters.ContainsKey("CsvDir") -and $env:SAP_CSV_DIR) {
 }
 
 $DB_HOST = Get-EnvOrDefault -Name "DB_HOST" -Default "localhost"
-$DB_PORT = Get-EnvOrDefault -Name "DB_PORT" -Default "5432"
+$RequestedDbPort = Get-EnvOrDefault -Name "DB_PORT" -Default "5432"
+$DB_PORT = $RequestedDbPort
 $DB_NAME = Get-EnvOrDefault -Name "DB_NAME" -Default "sap_etl"
 $DB_USER = Get-EnvOrDefault -Name "DB_USER" -Default "postgres"
 $DB_PASS = Get-EnvOrDefault -Name "DB_PASSWORD" -Default "postgres"
-$PG_DSN = Get-EnvOrDefault -Name "PG_DSN" -Default "host=$DB_HOST dbname=$DB_NAME user=$DB_USER password=$DB_PASS"
 $CsvPath = Resolve-RepoPath -PathValue $CsvDir
+$PostgresContainerRef = $null
 
+if (-not $SkipDocker) {
+    Assert-DockerReady
+
+    $existingComposeRef = Get-ComposePostgresContainerRef
+    if ($existingComposeRef) {
+        $existingPort = Get-ContainerHostPort -ContainerRef $existingComposeRef
+        if ($existingPort) {
+            $DB_PORT = $existingPort
+            $PostgresContainerRef = $existingComposeRef
+            Write-Warn "Reutilizando postgres del stack TEG en localhost:$DB_PORT"
+        }
+    }
+
+    if (-not $PostgresContainerRef) {
+        $preferredPort = [int]$RequestedDbPort
+        if (Test-PortInUse -Port $preferredPort) {
+            $fallbackPort = Find-AvailablePort -StartPort ($preferredPort + 1)
+            Write-Warn "El puerto $preferredPort ya esta ocupado. PostgreSQL del stack TEG usara localhost:$fallbackPort."
+            $DB_PORT = "$fallbackPort"
+        }
+    }
+
+    $env:POSTGRES_HOST_PORT = "$DB_PORT"
+}
+
+$env:DB_HOST = $DB_HOST
+$env:DB_PORT = "$DB_PORT"
+$env:DB_NAME = $DB_NAME
+$env:DB_USER = $DB_USER
+$env:DB_PASSWORD = $DB_PASS
+$PG_DSN = "host=$DB_HOST port=$DB_PORT dbname=$DB_NAME user=$DB_USER password=$DB_PASS"
 $env:PG_DSN = $PG_DSN
 $env:SAP_CSV_DIR = $CsvPath
 $env:PYTHONPATH = $Root
@@ -496,28 +609,31 @@ if (-not $DryRun) {
 
 if (-not $SkipDocker) {
     Write-Step "Iniciando PostgreSQL con Docker Compose"
-    Assert-DockerReady
     if ($DryRun) {
-        Write-Ok "Se ejecutaria: docker compose up -d postgres"
+        Write-Ok "Se ejecutaria: docker compose up -d postgres (host port $DB_PORT)"
     } else {
         Set-Location $Root
         Invoke-NativeOrThrow -Command { docker compose up -d postgres } -FailureMessage "No se pudo iniciar postgres con docker compose"
+        $PostgresContainerRef = Get-ComposePostgresContainerRef
         Write-Ok "Contenedor postgres iniciado"
     }
 } else {
     Write-Warn "Saltando docker compose (-SkipDocker)"
+    if (-not $DryRun) {
+        $PostgresContainerRef = Get-ComposePostgresContainerRef
+    }
 }
 
-Assert-PostgresContainer
-Wait-ForPostgresReady -DbUser $DB_USER
+Assert-PostgresContainer -ContainerRef $PostgresContainerRef
+Wait-ForPostgresReady -DbUser $DB_USER -ContainerRef $PostgresContainerRef
 Write-Ok "PostgreSQL listo"
 
 Write-Step "Verificando base de datos '$DB_NAME'"
 if (-not $DryRun) {
-    $dbList = Invoke-NativeOrThrow -Command { docker exec sap_etl_postgres psql -U $DB_USER -lqt } -FailureMessage "No se pudo listar las bases de datos" -Quiet
+    $dbList = Invoke-NativeOrThrow -Command { docker exec $PostgresContainerRef psql -U $DB_USER -lqt } -FailureMessage "No se pudo listar las bases de datos" -Quiet
     $dbExists = $dbList | Select-String -SimpleMatch $DB_NAME
     if (-not $dbExists) {
-        Invoke-NativeOrThrow -Command { docker exec sap_etl_postgres psql -U $DB_USER -c "CREATE DATABASE $DB_NAME" postgres } -FailureMessage "No se pudo crear la base de datos '$DB_NAME'" -Quiet
+        Invoke-NativeOrThrow -Command { docker exec $PostgresContainerRef psql -U $DB_USER -c "CREATE DATABASE $DB_NAME" postgres } -FailureMessage "No se pudo crear la base de datos '$DB_NAME'" -Quiet
         Write-Ok "Base de datos '$DB_NAME' creada"
     } else {
         Write-Ok "Base de datos '$DB_NAME' ya existe"
@@ -534,14 +650,26 @@ if (-not $SkipSchema) {
     }
 
     if (-not $DryRun) {
-        Invoke-NativeOrThrow -Command { docker cp $schemaFile sap_etl_postgres:/tmp/schema.sql } -FailureMessage "No se pudo copiar schema.sql al contenedor" -Quiet
-        Invoke-NativeOrThrow -Command { docker exec sap_etl_postgres psql -v ON_ERROR_STOP=1 -U $DB_USER -d $DB_NAME -f /tmp/schema.sql } -FailureMessage "No se pudo aplicar sql/schema.sql" -Quiet
+        Invoke-NativeOrThrow -Command { docker cp $schemaFile "${PostgresContainerRef}:/tmp/schema.sql" } -FailureMessage "No se pudo copiar schema.sql al contenedor" -Quiet
+        Invoke-NativeOrThrow -Command { docker exec $PostgresContainerRef psql -v ON_ERROR_STOP=1 -U $DB_USER -d $DB_NAME -f /tmp/schema.sql } -FailureMessage "No se pudo aplicar sql/schema.sql" -Quiet
         Write-Ok "Schema aplicado"
     } else {
         Write-Ok "Schema validado (dry run)"
     }
 } else {
     Write-Warn "Schema omitido (-SkipSchema)"
+}
+
+$authSchemaFile = Join-Path $Root "sql\auth.sql"
+if (-not $SkipSchema -and (Test-Path $authSchemaFile)) {
+    Write-Step "Aplicando auth schema (sql/auth.sql)"
+    if (-not $DryRun) {
+        Invoke-NativeOrThrow -Command { docker cp $authSchemaFile "${PostgresContainerRef}:/tmp/auth.sql" } -FailureMessage "No se pudo copiar auth.sql al contenedor" -Quiet
+        Invoke-NativeOrThrow -Command { docker exec $PostgresContainerRef psql -v ON_ERROR_STOP=1 -U $DB_USER -d $DB_NAME -f /tmp/auth.sql } -FailureMessage "No se pudo aplicar sql/auth.sql" -Quiet
+        Write-Ok "Auth schema aplicado"
+    } else {
+        Write-Ok "Auth schema validado (dry run)"
+    }
 }
 
 Write-Step "Preparando entorno Python"
@@ -570,6 +698,17 @@ if ($DryRun) {
     $requirementsFile = Join-Path $Root "requirements.txt"
     Invoke-NativeOrThrow -Command { & $python -m pip install -r $requirementsFile --quiet } -FailureMessage "No se pudieron instalar las dependencias Python" -Quiet
     Write-Ok "Dependencias Python instaladas"
+}
+
+$seedUsersScript = Join-Path $Root "backend\seed_users.py"
+if (-not $SkipSchema -and (Test-Path $seedUsersScript)) {
+    Write-Step "Sembrando usuarios iniciales"
+    if ($DryRun) {
+        Write-Ok "Se ejecutaria: $python $seedUsersScript"
+    } else {
+        Invoke-NativeOrThrow -Command { & $python $seedUsersScript } -FailureMessage "No se pudieron sembrar los usuarios iniciales" -Quiet
+        Write-Ok "Usuarios iniciales listos"
+    }
 }
 
 if ($StartFrontend) {

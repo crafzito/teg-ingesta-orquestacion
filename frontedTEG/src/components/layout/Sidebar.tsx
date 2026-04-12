@@ -1,13 +1,31 @@
 import { NavLink } from 'react-router-dom'
 import { Button } from '@heroui/react'
 import {
-  LayoutDashboard, TrendingUp, CreditCard, Wallet,
-  Package, Factory, ShoppingCart, Users, Box, ChevronLeft,
   Activity,
+  Box,
+  ChevronLeft,
+  CreditCard,
+  Factory,
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  Users,
+  Wallet,
 } from 'lucide-react'
-import { useUiStore } from '../../stores/uiStore'
 
-const NAV_GROUPS = [
+import { useAuthStore } from '../../stores/authStore'
+import { useUiStore } from '../../stores/uiStore'
+import type { UserRole } from '../../types/auth'
+
+interface NavItem {
+  to: string
+  icon: typeof LayoutDashboard
+  label: string
+  allowedRoles?: UserRole[]
+}
+
+const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: 'Principal',
     items: [
@@ -40,31 +58,30 @@ const NAV_GROUPS = [
   {
     label: 'Sistema',
     items: [
-      { to: '/etl', icon: Activity, label: 'Monitor ETL' },
+      { to: '/etl', icon: Activity, label: 'Monitor ETL', allowedRoles: ['superadmin', 'admin'] },
     ],
   },
 ]
 
 export function Sidebar() {
+  const role = useAuthStore((s) => s.user?.role)
   const { sidebarOpen, toggleSidebar, isMobile, setSidebarOpen, closeSidebarOnMobile } = useUiStore()
 
-  // On mobile: sidebar is always w-64 (full expanded) when open, hidden off-screen when closed
-  // On desktop: sidebar toggles between w-64 (expanded) and w-16 (collapsed icons)
   const sidebarWidth = isMobile ? 'w-64' : (sidebarOpen ? 'w-64' : 'w-16')
-
-  // On mobile: use translateX to slide in/out
   const mobileTransform = isMobile
     ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full')
     : ''
-
-  // Show expanded content (labels, group headers) when:
-  // - on mobile (always expanded when visible)
-  // - on desktop when sidebarOpen is true
   const showLabels = isMobile || sidebarOpen
+
+  const visibleGroups = NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.allowedRoles || (!!role && item.allowedRoles.includes(role))),
+    }))
+    .filter((group) => group.items.length > 0)
 
   return (
     <>
-      {/* Backdrop overlay for mobile */}
       {isMobile && sidebarOpen && (
         <div
           className="fixed inset-0 z-[35] bg-black/50 transition-opacity duration-300"
@@ -81,11 +98,7 @@ export function Sidebar() {
       >
         <div className="flex h-16 items-center justify-between px-4 border-b border-white/10">
           <div className="flex items-center gap-2.5 min-w-0">
-            <img
-              src="/img/logo_380.png"
-              alt="Proyectos PET"
-              className="h-9 w-auto flex-shrink-0"
-            />
+            <img src="/img/logo_380.png" alt="Proyectos PET" className="h-9 w-auto flex-shrink-0" />
             {showLabels && (
               <div className="flex flex-col leading-tight min-w-0">
                 <span className="text-sm font-bold text-white tracking-wide">Proyectos</span>
@@ -100,14 +113,12 @@ export function Sidebar() {
             onPress={isMobile ? () => setSidebarOpen(false) : toggleSidebar}
             className="text-white/70 hover:text-white hover:bg-white/10 flex-shrink-0"
           >
-            <ChevronLeft className={`h-5 w-5 transition-transform ${
-              !isMobile && !sidebarOpen ? 'rotate-180' : ''
-            }`} />
+            <ChevronLeft className={`h-5 w-5 transition-transform ${!isMobile && !sidebarOpen ? 'rotate-180' : ''}`} />
           </Button>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-2">
-          {NAV_GROUPS.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.label} className="mb-4">
               {showLabels && (
                 <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -128,9 +139,7 @@ export function Sidebar() {
                             : 'text-white/70 hover:text-white hover:bg-white/10'
                         } ${!showLabels ? 'justify-center px-0' : ''}`
                       }
-                      style={({ isActive }) =>
-                        isActive ? { backgroundColor: '#FF4E00' } : undefined
-                      }
+                      style={({ isActive }) => (isActive ? { backgroundColor: '#FF4E00' } : undefined)}
                     >
                       <item.icon className="h-5 w-5 flex-shrink-0" />
                       {showLabels && <span>{item.label}</span>}

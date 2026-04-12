@@ -1,9 +1,14 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from ...auth import require_role
 from ..core import get_schema, parse_schema_filter, readonly_conn, reset_schema_cache
 from ..models import SchemaColumn, SchemaRelation, SchemaTable
 
-router = APIRouter(prefix="/api/schema", tags=["schema"])
+router = APIRouter(
+    prefix="/api/schema",
+    tags=["schema"],
+    dependencies=[Depends(require_role({"superadmin", "admin"}))],
+)
 
 
 @router.get("", response_model=list[SchemaTable])

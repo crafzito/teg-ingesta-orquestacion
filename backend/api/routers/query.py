@@ -1,7 +1,8 @@
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from ...auth import UserOut, get_current_user
 from ..core import readonly_conn, serialize, validate_readonly
 from ..models import QueryRequest, QueryResponse
 
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["query"])
 
 
 @router.post("/query", response_model=QueryResponse)
-def execute_query(req: QueryRequest):
+def execute_query(req: QueryRequest, current_user: UserOut = Depends(get_current_user)):
     sql = validate_readonly(req.sql)
 
     t0 = time.perf_counter()

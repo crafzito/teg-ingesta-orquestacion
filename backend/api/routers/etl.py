@@ -2,13 +2,15 @@ import asyncio
 import datetime
 import hashlib
 import logging
+import os
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
+from ...auth import UserOut, require_role, resolve_user_from_token
 from ..core import (
     ETL_MONITOR_DIRS,
     PROJECT_ROOT,
@@ -31,12 +33,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/etl", tags=["etl"])
 
 _etl_process: subprocess.Popen | None = None
+_etl_process_log_handle = None
 _EXECUTION_ORDER_SQL = "COALESCE(finished_at, started_at) DESC NULLS LAST, id DESC"
 _BATCH_ORDER_SQL = (
     "COALESCE(b.finished_at, b.started_at) DESC NULLS LAST, "
     "b.started_at DESC, b.batch_id DESC"
 )
 _STALE_AFTER = datetime.timedelta(minutes=30)
+_ETL_ALLOWED_ROLES = {"superadmin", "admin"}
+_DATA_ROOT = (PROJECT_ROOT / "data").resolve()
 
 
 def _batch_file_item_from_row(row: tuple) -> EtlBatchFileItem:
@@ -507,8 +512,75 @@ def _build_monitor_response() -> EtlMonitorResponse:
     )
 
 
+def _resolve_data_dir(data_dir: str) -> Path:
+    raw_path = Path(data_dir)
+    resolved = raw_path.resolve() if raw_path.is_absolute() else (PROJECT_ROOT / raw_path).resolve()
+
+    try:
+        resolved.relative_to(_DATA_ROOT)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Directorio no permitido: {resolved}. "
+                f"Solo se aceptan rutas dentro de {_DATA_ROOT}"
+            ),
+        ) from exc
+
+    if not resolved.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Directorio no encontrado: {resolved}",
+        )
+    if not resolved.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La ruta no es un directorio: {resolved}",
+        )
+
+    return resolved
+
+
+def _ensure_runtime_log_dir() -> Path:
+    log_dir = PROJECT_ROOT / ".runtime" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+
+def _build_etl_env() -> dict[str, str]:
+    env = {**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
+    if env.get("PG_DSN"):
+        return env
+
+    db_host = env.get("DB_HOST", "localhost")
+    db_port = env.get("DB_PORT", "5432")
+    db_name = env.get("DB_NAME", "sap_etl")
+    db_user = env.get("DB_USER", "postgres")
+    db_password = env.get("DB_PASSWORD", "postgres")
+    env["PG_DSN"] = (
+        f"host={db_host} port={db_port} dbname={db_name} "
+        f"user={db_user} password={db_password}"
+    )
+    return env
+
+
+def _close_etl_log_handle() -> None:
+    global _etl_process_log_handle
+
+    if _etl_process_log_handle is None:
+        return
+
+    try:
+        _etl_process_log_handle.flush()
+        _etl_process_log_handle.close()
+    except Exception:
+        logger.exception("No se pudo cerrar el log del proceso ETL actual")
+    finally:
+        _etl_process_log_handle = None
+
+
 @router.get("/monitor", response_model=EtlMonitorResponse)
-def get_etl_monitor():
+def get_etl_monitor(current_user: UserOut = Depends(require_role(_ETL_ALLOWED_ROLES))):
     return _build_monitor_response()
 
 
@@ -519,12 +591,13 @@ def _is_etl_running() -> bool:
     retcode = _etl_process.poll()
     if retcode is not None:
         _etl_process = None
+        _close_etl_log_handle()
         return False
     return True
 
 
 @router.post("/run", response_model=EtlRunResponse)
-def run_etl(req: EtlRunRequest):
+def run_etl(req: EtlRunRequest, current_user: UserOut = Depends(require_role(_ETL_ALLOWED_ROLES))):
     global _etl_process
 
     if _is_etl_running():
@@ -534,14 +607,7 @@ def run_etl(req: EtlRunRequest):
             pid=_etl_process.pid,
         )
 
-    data_path = Path(req.data_dir)
-    if not data_path.is_absolute():
-        data_path = PROJECT_ROOT / data_path
-    if not data_path.exists():
-        return EtlRunResponse(
-            status="error",
-            message=f"Directorio no encontrado: {data_path}",
-        )
+    data_path = _resolve_data_dir(req.data_dir)
 
     pipeline_script = PROJECT_ROOT / "etl" / "pipeline.py"
     if not pipeline_script.exists():
@@ -571,24 +637,35 @@ def run_etl(req: EtlRunRequest):
         cmd.append("--skip-raw")
 
     logger.info("Lanzando ETL: %s", " ".join(cmd))
+    log_dir = _ensure_runtime_log_dir()
+    log_path = log_dir / f"etl-{batch_id}.log"
+    global _etl_process_log_handle
+    _close_etl_log_handle()
+    _etl_process_log_handle = log_path.open("a", encoding="utf-8")
+    _etl_process_log_handle.write(
+        f"[{datetime.datetime.now(datetime.timezone.utc).isoformat()}] Lanzando ETL como {current_user.username} ({current_user.role})\n"
+    )
+    _etl_process_log_handle.flush()
     _etl_process = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
-        stdout=subprocess.PIPE,
+        stdout=_etl_process_log_handle,
         stderr=subprocess.STDOUT,
         text=True,
+        bufsize=1,
+        env=_build_etl_env(),
     )
 
     return EtlRunResponse(
         status="started",
-        message=f"ETL iniciado (PID {_etl_process.pid}, batch {batch_id})",
+        message=f"ETL iniciado (PID {_etl_process.pid}, batch {batch_id}, log {log_path})",
         pid=_etl_process.pid,
         data_dir=str(data_path),
     )
 
 
 @router.get("/run/status", response_model=EtlRunResponse)
-def get_etl_run_status():
+def get_etl_run_status(current_user: UserOut = Depends(require_role(_ETL_ALLOWED_ROLES))):
     if _is_etl_running():
         return EtlRunResponse(
             status="running",
@@ -603,6 +680,19 @@ def get_etl_run_status():
 
 @router.websocket("/ws/monitor")
 async def ws_etl_monitor(websocket: WebSocket):
+    token = websocket.query_params.get("access_token")
+    try:
+        current_user = resolve_user_from_token(token)
+        if current_user.role not in _ETL_ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No autorizado para el monitor ETL",
+            )
+    except HTTPException:
+        await websocket.accept()
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     prev_hash = ""
     try:

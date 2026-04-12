@@ -1,7 +1,16 @@
+export type UserRole = 'superadmin' | 'admin' | 'analista'
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  superadmin: 'Superadministrador',
+  admin: 'Administrador',
+  analista: 'Analista',
+}
+
 export interface User {
+  id: number
   username: string
-  displayName: string
-  role: 'admin' | 'viewer'
+  fullName: string
+  role: UserRole
 }
 
 export interface LoginCredentials {
@@ -9,10 +18,25 @@ export interface LoginCredentials {
   password: string
 }
 
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  user: {
+    id: number
+    username: string
+    full_name: string | null
+    role: UserRole
+  }
+}
+
 export interface AuthState {
   user: User | null
   token: string | null
   isAuthenticated: boolean
-  login: (credentials: LoginCredentials) => Promise<boolean>
-  logout: () => void
+  initialized: boolean
+  isLoading: boolean
+  bootstrap: () => Promise<void>
+  login: (credentials: LoginCredentials) => Promise<void>
+  logout: () => Promise<void>
+  hasRole: (roles?: UserRole[]) => boolean
 }

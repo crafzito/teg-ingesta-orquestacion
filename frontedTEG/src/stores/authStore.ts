@@ -1,50 +1,109 @@
 import { create } from 'zustand'
-import type { AuthState, LoginCredentials, User } from '../types/auth'
 
-const MOCK_USERS: Record<string, { password: string; user: User }> = {
-  admin: {
-    password: 'admin123',
-    user: { username: 'admin', displayName: 'Administrador', role: 'admin' },
-  },
-}
+import {
+  clearPersistedAuth,
+  fetchCurrentUser,
+  getStoredToken,
+  getStoredUser,
+  loginRequest,
+  logoutRequest,
+  persistAuth,
+} from '../api/auth'
+import type { AuthState } from '../types/auth'
 
-const TOKEN_KEY = 'teg_auth_token'
-const USER_KEY = 'teg_auth_user'
+const persistedToken = getStoredToken()
+const persistedUser = getStoredUser()
 
-function loadPersistedAuth(): { token: string | null; user: User | null } {
-  try {
-    const token = localStorage.getItem(TOKEN_KEY)
-    const raw = localStorage.getItem(USER_KEY)
-    const user = raw ? (JSON.parse(raw) as User) : null
-    return { token, user }
-  } catch {
-    return { token: null, user: null }
-  }
-}
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: persistedUser,
+  token: persistedToken,
+  isAuthenticated: !!persistedToken && !!persistedUser,
+  initialized: false,
+  isLoading: false,
 
-const persisted = loadPersistedAuth()
-
-export const useAuthStore = create<AuthState>((set) => ({
-  user: persisted.user,
-  token: persisted.token,
-  isAuthenticated: !!persisted.token,
-
-  login: async (credentials: LoginCredentials) => {
-    // Mock auth - replace with POST /api/auth/login when available
-    const entry = MOCK_USERS[credentials.username]
-    if (entry && entry.password === credentials.password) {
-      const token = `mock-token-${Date.now()}`
-      localStorage.setItem(TOKEN_KEY, token)
-      localStorage.setItem(USER_KEY, JSON.stringify(entry.user))
-      set({ user: entry.user, token, isAuthenticated: true })
-      return true
+  bootstrap: async () => {
+    const token = get().token ?? getStoredToken()
+    if (!token) {
+      clearPersistedAuth()
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        initialized: true,
+        isLoading: false,
+      })
+      return
     }
-    return false
+
+    set({ isLoading: true })
+    try {
+      const user = await fetchCurrentUser(token)
+      persistAuth(token, user)
+      set({
+        user,
+        token,
+        isAuthenticated: true,
+        initialized: true,
+        isLoading: false,
+      })
+    } catch {
+      clearPersistedAuth()
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        initialized: true,
+        isLoading: false,
+      })
+    }
   },
 
-  logout: () => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
-    set({ user: null, token: null, isAuthenticated: false })
+  login: async (credentials) => {
+    set({ isLoading: true })
+    try {
+      const { token, user } = await loginRequest(credentials)
+      persistAuth(token, user)
+      set({
+        user,
+        token,
+        isAuthenticated: true,
+        initialized: true,
+        isLoading: false,
+      })
+    } catch (error) {
+      clearPersistedAuth()
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        initialized: true,
+        isLoading: false,
+      })
+      throw error
+    }
+  },
+
+  logout: async () => {
+    const token = get().token ?? getStoredToken()
+    try {
+      await logoutRequest(token)
+    } catch {
+      // el backend puede estar caído; igual limpiamos la sesión local
+    } finally {
+      clearPersistedAuth()
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        initialized: true,
+        isLoading: false,
+      })
+    }
+  },
+
+  hasRole: (roles) => {
+    if (!roles || roles.length === 0) return true
+    const role = get().user?.role
+    return !!role && roles.includes(role)
   },
 }))

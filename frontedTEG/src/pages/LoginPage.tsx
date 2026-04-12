@@ -1,28 +1,36 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Card, CardBody, CardHeader, Input, Button } from '@heroui/react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Button, Card, CardBody, CardHeader, Input } from '@heroui/react'
+import { Eye, EyeOff, LogIn } from 'lucide-react'
+
 import { useAuthStore } from '../stores/authStore'
-import { LogIn, Eye, EyeOff } from 'lucide-react'
+
+const DEMO_CREDENTIALS = [
+  'superadmin / Admin#2026',
+  'admin / Admin#2026',
+  'analista / Analista#2026',
+]
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('admin')
+  const [password, setPassword] = useState('Admin#2026')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
   const [showPw, setShowPw] = useState(false)
+
   const login = useAuthStore((s) => s.login)
+  const loading = useAuthStore((s) => s.isLoading)
   const navigate = useNavigate()
+  const location = useLocation()
+  const nextPath = (location.state as { from?: string } | null)?.from || '/'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    setLoading(true)
-    const ok = await login({ username, password })
-    setLoading(false)
-    if (ok) {
-      navigate('/', { replace: true })
-    } else {
-      setError('Credenciales incorrectas')
+    try {
+      await login({ username, password })
+      navigate(nextPath, { replace: true })
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Credenciales incorrectas')
     }
   }
 
@@ -30,17 +38,13 @@ export default function LoginPage() {
     <div className="w-full max-w-md">
       <Card shadow="lg" className="p-2">
         <CardHeader className="flex-col items-center pt-6 pb-0">
-          <img
-            src="/img/logo_380.png"
-            alt="Proyectos PET"
-            className="h-20 w-auto mb-3"
-          />
+          <img src="/img/logo_380.png" alt="Proyectos PET" className="mb-3 h-20 w-auto" />
           <h1 className="text-2xl font-bold" style={{ color: '#091B6B' }}>Proyectos PET</h1>
           <p className="mt-2 text-sm text-default-500">Ingrese sus credenciales</p>
         </CardHeader>
         <CardBody className="px-8 pb-8 pt-6">
           {error && (
-            <div className="mb-4 rounded-xl bg-danger-50 border border-danger-200 px-4 py-3 text-sm text-danger">
+            <div className="mb-4 rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
@@ -51,14 +55,16 @@ export default function LoginPage() {
               value={username}
               onValueChange={setUsername}
               variant="bordered"
+              autoComplete="username"
               isRequired
             />
             <Input
-              label="Contrasena"
+              label="Contraseña"
               placeholder="••••••••"
               value={password}
               onValueChange={setPassword}
               variant="bordered"
+              autoComplete="current-password"
               isRequired
               type={showPw ? 'text' : 'password'}
               endContent={
@@ -76,12 +82,17 @@ export default function LoginPage() {
               className="text-white font-semibold"
               style={{ backgroundColor: '#FF4E00' }}
             >
-              Iniciar Sesion
+              Iniciar sesión
             </Button>
           </form>
-          <p className="mt-6 text-center text-xs text-default-400">
-            Demo: admin / admin123
-          </p>
+          <div className="mt-6 rounded-xl bg-default-50 p-3 text-xs text-default-500">
+            <p className="mb-2 font-semibold text-default-700">Credenciales demo:</p>
+            <ul className="space-y-1">
+              {DEMO_CREDENTIALS.map((credential) => (
+                <li key={credential}>{credential}</li>
+              ))}
+            </ul>
+          </div>
         </CardBody>
       </Card>
     </div>

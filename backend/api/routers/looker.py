@@ -2,8 +2,9 @@ import datetime
 import decimal
 import time
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ...auth import require_role
 from ..core import (
     ALLOWED_EXPORT_SCHEMAS,
     ALLOWED_OPERATORS,
@@ -18,7 +19,11 @@ from ..core import (
 )
 from ..models import BaseView, CreateLookerViewRequest, LookerView, ViewColumn
 
-router = APIRouter(prefix="/api", tags=["looker"])
+router = APIRouter(
+    prefix="/api",
+    tags=["looker"],
+    dependencies=[Depends(require_role({"superadmin", "admin"}))],
+)
 
 
 @router.get("/looker/views", response_model=list[LookerView])

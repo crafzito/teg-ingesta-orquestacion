@@ -1,5 +1,7 @@
 import { lazy } from 'react'
 
+import type { UserRole } from '../types/auth'
+
 const DashboardPage = lazy(() => import('../pages/DashboardPage'))
 const VentasPage = lazy(() => import('../pages/VentasPage'))
 const CxcPage = lazy(() => import('../pages/CxcPage'))
@@ -11,15 +13,24 @@ const ClientesPage = lazy(() => import('../pages/ClientesPage'))
 const ProductosPage = lazy(() => import('../pages/ProductosPage'))
 const EtlMonitorPage = lazy(() => import('../pages/EtlMonitorPage'))
 
-export const appRoutes = [
-  { path: '/', element: DashboardPage },
-  { path: '/ventas', element: VentasPage },
-  { path: '/cxc', element: CxcPage },
-  { path: '/cxp', element: CxpPage },
-  { path: '/inventario', element: InventarioPage },
-  { path: '/produccion', element: ProduccionPage },
-  { path: '/pedidos', element: PedidosPage },
-  { path: '/clientes', element: ClientesPage },
-  { path: '/productos', element: ProductosPage },
-  { path: '/etl', element: EtlMonitorPage },
-] as const
+export interface AppRouteItem {
+  path: string
+  element: ReturnType<typeof lazy>
+  allowedRoles?: UserRole[]
+}
+
+const ALL_ROLES: UserRole[] = ['superadmin', 'admin', 'analista']
+const ADMIN_ROLES: UserRole[] = ['superadmin', 'admin']
+
+export const appRoutes: AppRouteItem[] = [
+  { path: '/', element: DashboardPage, allowedRoles: ALL_ROLES },
+  { path: '/ventas', element: VentasPage, allowedRoles: ALL_ROLES },
+  { path: '/cxc', element: CxcPage, allowedRoles: ALL_ROLES },
+  { path: '/cxp', element: CxpPage, allowedRoles: ALL_ROLES },
+  { path: '/inventario', element: InventarioPage, allowedRoles: ALL_ROLES },
+  { path: '/produccion', element: ProduccionPage, allowedRoles: ALL_ROLES },
+  { path: '/pedidos', element: PedidosPage, allowedRoles: ALL_ROLES },
+  { path: '/clientes', element: ClientesPage, allowedRoles: ALL_ROLES },
+  { path: '/productos', element: ProductosPage, allowedRoles: ALL_ROLES },
+  { path: '/etl', element: EtlMonitorPage, allowedRoles: ADMIN_ROLES },
+]

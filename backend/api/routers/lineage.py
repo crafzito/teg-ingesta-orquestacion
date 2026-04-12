@@ -1,10 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pathlib import Path
 
+from ...auth import require_role
 from ..core import LOGICAL_RELATIONS, PROJECT_ROOT, load_lineage_sources
 from ..models import LineageSource, LogicalRelation
 
-router = APIRouter(prefix="/api/lineage", tags=["lineage"])
+router = APIRouter(
+    prefix="/api/lineage",
+    tags=["lineage"],
+    dependencies=[Depends(require_role({"superadmin", "admin"}))],
+)
 
 
 @router.get("/sources", response_model=list[LineageSource])

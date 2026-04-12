@@ -1,21 +1,21 @@
-import { Button, Avatar } from '@heroui/react'
+import { Avatar, Button, Chip } from '@heroui/react'
 import { LogOut, Menu } from 'lucide-react'
+
 import { useAuthStore } from '../../stores/authStore'
 import { useUiStore } from '../../stores/uiStore'
+import { ROLE_LABELS } from '../../types/auth'
 
 export function Header() {
-  const { user, logout } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
   const { sidebarOpen, isMobile, toggleSidebar } = useUiStore()
 
-  // On mobile: header spans full width (left-0)
-  // On desktop: header offsets by sidebar width
   const leftOffset = isMobile ? 'left-0' : (sidebarOpen ? 'left-64' : 'left-16')
 
   return (
     <header
       className={`fixed top-0 right-0 z-20 h-16 bg-background/80 backdrop-blur-md border-b border-divider flex items-center justify-between px-4 sm:px-6 transition-all duration-300 ${leftOffset}`}
     >
-      {/* Left side: hamburger on mobile */}
       <div className="flex items-center">
         {isMobile && (
           <Button
@@ -31,10 +31,9 @@ export function Header() {
         )}
       </div>
 
-      {/* Right side: user info + logout */}
       <div className="flex items-center gap-3">
         <Avatar
-          name={user?.displayName?.[0] ?? 'U'}
+          name={user?.fullName?.[0] ?? 'U'}
           size="sm"
           isBordered
           classNames={{
@@ -42,15 +41,20 @@ export function Header() {
             name: 'text-white',
           }}
         />
-        <span className="text-sm text-default-600 hidden sm:inline">
-          {user?.displayName ?? 'Usuario'}
-        </span>
+        <div className="hidden sm:flex flex-col items-end leading-tight">
+          <span className="text-sm text-default-700">{user?.fullName ?? 'Usuario'}</span>
+          {user?.role && (
+            <Chip size="sm" variant="flat" color="primary" className="mt-1">
+              {ROLE_LABELS[user.role]}
+            </Chip>
+          )}
+        </div>
         <Button
           isIconOnly
           size="sm"
           variant="light"
           color="danger"
-          onPress={logout}
+          onPress={() => { void logout() }}
           aria-label="Cerrar sesion"
         >
           <LogOut className="h-4 w-4" />

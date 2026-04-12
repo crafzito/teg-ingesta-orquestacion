@@ -1,11 +1,13 @@
 import { Suspense } from 'react'
-import { createBrowserRouter, RouterProvider, Route, createRoutesFromElements } from 'react-router-dom'
-import { ProtectedRoute } from './ProtectedRoute'
+import { Navigate, Route, RouterProvider, createBrowserRouter, createRoutesFromElements } from 'react-router-dom'
+
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { AppLayout } from '../layouts/AppLayout'
 import { AuthLayout } from '../layouts/AuthLayout'
-import { LoadingSpinner } from '../components/ui/LoadingSpinner'
-import { appRoutes } from './routes'
 import LoginPage from '../pages/LoginPage'
+import UnauthorizedPage from '../pages/UnauthorizedPage'
+import { ProtectedRoute } from './ProtectedRoute'
+import { appRoutes } from './routes'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -13,23 +15,28 @@ const router = createBrowserRouter(
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
       </Route>
+
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          {appRoutes.map(({ path, element: Element }) => (
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
+          {appRoutes.map(({ path, element: Element, allowedRoles }) => (
             <Route
               key={path}
               path={path}
               element={
-                <Suspense fallback={<LoadingSpinner />}>
-                  <Element />
-                </Suspense>
+                <ProtectedRoute allowedRoles={allowedRoles}>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <Element />
+                  </Suspense>
+                </ProtectedRoute>
               }
             />
           ))}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
-    </>
-  )
+    </>,
+  ),
 )
 
 export function AppRouter() {

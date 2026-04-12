@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Card, CardBody, Tabs, Tab, Chip, Button, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
@@ -26,12 +26,28 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const ASCII_DASH = '-'
+const MONITOR_REFRESH_MS = 5_000
+
+function sanitizeDisplayText(value: string | null | undefined, fallback = ASCII_DASH): string {
+  if (value == null) return fallback
+
+  const normalized = value
+    .replace(/\\u2014|\\u2013|\u2014|\u2013|ÔÇö|â€”|â€“/g, ASCII_DASH)
+    .replace(/\\u2026|\u2026/g, '...')
+    .replace(/\\u2192|\u2192|ÔåÆ|â†’/g, '->')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return normalized || fallback
+}
+
 function fmtDateTime(value: string | null | undefined): string {
-  if (!value) return '\u2014'
+  if (!value) return ASCII_DASH
   try {
     return format(parseISO(value), 'dd/MM/yyyy HH:mm', { locale: es })
   } catch {
-    return value
+    return sanitizeDisplayText(value)
   }
 }
 
@@ -49,8 +65,8 @@ function fmtNumber(value: number): string {
 }
 
 function shortBatchId(id: string | null | undefined): string {
-  if (!id) return '\u2014'
-  return id.length > 12 ? `\u2026${id.slice(-12)}` : id
+  if (!id) return ASCII_DASH
+  return id.length > 12 ? `...${id.slice(-12)}` : sanitizeDisplayText(id)
 }
 
 type StatusColor = 'success' | 'danger' | 'primary' | 'warning' | 'default'
@@ -98,6 +114,16 @@ export default function EtlMonitorPage() {
   const sourceStatus = data?.source_status ?? []
   const recentExecutions = data?.recent_executions ?? []
   const isRunning = (currentBatches.length > 0) || (summary?.running_batches ?? 0) > 0
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refetch()
+    }, MONITOR_REFRESH_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [refetch])
 
   const handleRunEtl = useCallback(() => {
     etlRun.mutate({})
@@ -148,7 +174,7 @@ export default function EtlMonitorPage() {
           isDisabled={isRunning || etlRun.isPending}
           onPress={confirmModal.onOpen}
         >
-          {etlRun.isPending ? 'Iniciando\u2026' : isRunning ? 'ETL en proceso' : 'Ejecutar ETL'}
+          {etlRun.isPending ? 'Iniciando...' : isRunning ? 'ETL en proceso' : 'Ejecutar ETL'}
         </Button>
       </div>
     </div>
@@ -193,7 +219,7 @@ export default function EtlMonitorPage() {
       {data && !data.database_available && (
         <div className="mb-3 sm:mb-4 rounded-xl bg-warning-50 border border-warning-200 p-2 sm:p-3 text-xs sm:text-sm text-warning-700">
           La base de datos no esta disponible.
-          {data.database_error ? ` Detalle: ${data.database_error}` : ''}
+          {data.database_error ? ` Detalle: ${sanitizeDisplayText(data.database_error, 'Sin detalle')}` : ''}
         </div>
       )}
 
@@ -412,7 +438,7 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
               </div>
               <p className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs text-default-400">
                 Inicio: {fmtDateTime(batch.started_at)}
-                {batch.finished_at ? ` \u00B7 Fin: ${fmtDateTime(batch.finished_at)}` : ''}
+                {batch.finished_at ? ` | Fin: ${fmtDateTime(batch.finished_at)}` : ''}
               </p>
             </div>
           </div>
@@ -429,7 +455,7 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
         {/* Error message */}
         {batch.error_message && (
           <div className="mx-2 sm:mx-4 mb-2 rounded-lg bg-danger-50 border border-danger-100 px-2 sm:px-3 py-2 text-[11px] sm:text-xs text-danger break-words">
-            {batch.error_message}
+            {sanitizeDisplayText(batch.error_message)}
           </div>
         )}
 
@@ -472,7 +498,7 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                             <span className="font-medium whitespace-nowrap">{file.filename}</span>
                           </TableCell>
                           <TableCell>
-                            <span className="text-default-500 whitespace-nowrap">{file.source_key ?? '\u2014'}</span>
+                            <span className="text-default-500 whitespace-nowrap">{sanitizeDisplayText(file.source_key)}</span>
                           </TableCell>
                           <TableCell>
                             <Chip size="sm" color={statusColor(file.status)} variant="flat" className="whitespace-nowrap">
@@ -480,7 +506,7 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                             </Chip>
                           </TableCell>
                           <TableCell>
-                            <span className="tabular-nums whitespace-nowrap">{file.rows_read > 0 ? fmtNumber(file.rows_read) : '\u2014'}</span>
+                            <span className="tabular-nums whitespace-nowrap">{file.rows_read > 0 ? fmtNumber(file.rows_read) : ASCII_DASH}</span>
                           </TableCell>
                           <TableCell>
                             <span className="tabular-nums whitespace-nowrap">{fmtNumber(file.rows_inserted)}</span>
@@ -493,13 +519,13 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                           </TableCell>
                           <TableCell>
                             {file.error_message ? (
-                              <Tooltip content={file.error_message}>
+                              <Tooltip content={sanitizeDisplayText(file.error_message, 'Sin detalle')}>
                                 <span className="text-danger text-xs cursor-help truncate max-w-[160px] inline-block">
-                                  {file.error_message}
+                                  {sanitizeDisplayText(file.error_message)}
                                 </span>
                               </Tooltip>
                             ) : (
-                              <span className="text-default-300">\u2014</span>
+                              <span className="text-default-300">{ASCII_DASH}</span>
                             )}
                           </TableCell>
                         </TableRow>
@@ -532,7 +558,7 @@ function BatchFileCard({ file }: { file: EtlBatchFileItem }) {
       <div className="grid grid-cols-4 gap-1 text-center">
         <div>
           <p className="text-[10px] uppercase text-default-400">Leidas</p>
-          <p className="text-xs font-semibold tabular-nums">{file.rows_read > 0 ? fmtNumber(file.rows_read) : '\u2014'}</p>
+          <p className="text-xs font-semibold tabular-nums">{file.rows_read > 0 ? fmtNumber(file.rows_read) : ASCII_DASH}</p>
         </div>
         <div>
           <p className="text-[10px] uppercase text-default-400">Insertadas</p>
@@ -549,7 +575,7 @@ function BatchFileCard({ file }: { file: EtlBatchFileItem }) {
       </div>
       {file.error_message && (
         <div className="mt-1.5 rounded bg-danger-50 px-2 py-1 text-[11px] text-danger break-words">
-          {file.error_message}
+          {sanitizeDisplayText(file.error_message)}
         </div>
       )}
     </div>
@@ -609,9 +635,9 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
                     value={pct}
                     color={pct > 90 ? 'success' : pct > 50 ? 'warning' : 'primary'}
                     className="flex-1"
-                    aria-label={`${row.pct_sin_cambios} sin cambios`}
+                    aria-label={`${sanitizeDisplayText(row.pct_sin_cambios)} sin cambios`}
                   />
-                  <span className="text-[11px] text-default-400 tabular-nums whitespace-nowrap">{row.pct_sin_cambios}</span>
+                  <span className="text-[11px] text-default-400 tabular-nums whitespace-nowrap">{sanitizeDisplayText(row.pct_sin_cambios)}</span>
                 </div>
               </CardBody>
             </Card>
@@ -676,9 +702,9 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
                         value={pct}
                         color={pct > 90 ? 'success' : pct > 50 ? 'warning' : 'primary'}
                         className="max-w-[80px]"
-                        aria-label={`${row.pct_sin_cambios} sin cambios`}
+                        aria-label={`${sanitizeDisplayText(row.pct_sin_cambios)} sin cambios`}
                       />
-                      <span className="text-xs text-default-400 tabular-nums">{row.pct_sin_cambios}</span>
+                      <span className="text-xs text-default-400 tabular-nums">{sanitizeDisplayText(row.pct_sin_cambios)}</span>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -713,7 +739,7 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
               </p>
               <p className="text-[11px] text-default-400 mb-2">
                 {fmtDateTime(exec.started_at)}
-                {exec.finished_at ? ` \u2192 ${fmtDateTime(exec.finished_at)}` : ''}
+                {exec.finished_at ? ` -> ${fmtDateTime(exec.finished_at)}` : ''}
               </p>
               <div className="grid grid-cols-4 gap-1 text-center">
                 <div>
@@ -736,7 +762,7 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
               {exec.error_message && (
                 <div className="mt-1.5 rounded bg-danger-50 px-2 py-1 text-[11px] text-danger break-words">
                   <AlertTriangle className="h-3 w-3 inline mr-1" />
-                  {exec.error_message}
+                  {sanitizeDisplayText(exec.error_message)}
                 </div>
               )}
             </CardBody>
@@ -772,7 +798,7 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
                   <span className="font-mono text-xs whitespace-nowrap">{exec.id}</span>
                 </TableCell>
                 <TableCell>
-                  <Tooltip content={exec.batch_id ?? 'Sin batch'}>
+                  <Tooltip content={sanitizeDisplayText(exec.batch_id, 'Sin batch')}>
                     <span className="text-xs text-default-500 whitespace-nowrap">{shortBatchId(exec.batch_id)}</span>
                   </Tooltip>
                 </TableCell>
@@ -804,14 +830,14 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
                 </TableCell>
                 <TableCell>
                   {exec.error_message ? (
-                    <Tooltip content={exec.error_message}>
+                    <Tooltip content={sanitizeDisplayText(exec.error_message, 'Sin detalle')}>
                       <Chip size="sm" color="danger" variant="flat" className="cursor-help whitespace-nowrap">
                         <AlertTriangle className="h-3 w-3 mr-1 inline" />
                         Ver error
                       </Chip>
                     </Tooltip>
                   ) : (
-                    <span className="text-default-300">\u2014</span>
+                    <span className="text-default-300">{ASCII_DASH}</span>
                   )}
                 </TableCell>
               </TableRow>

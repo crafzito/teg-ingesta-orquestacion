@@ -404,7 +404,7 @@ def _build_monitor_response() -> EtlMonitorResponse:
                             rows_rejected AS rechazadas,
                             CASE WHEN COALESCE(rows_read, 0) > 0
                                  THEN ROUND(rows_skipped::numeric / rows_read * 100, 0)::text || '%'
-                                 ELSE '—' END AS pct_sin_cambios,
+                                 ELSE '-' END AS pct_sin_cambios,
                             error_message AS error
                         FROM etl.executions
                         ORDER BY source_key, COALESCE(finished_at, started_at) DESC NULLS LAST, id DESC
@@ -429,7 +429,7 @@ def _build_monitor_response() -> EtlMonitorResponse:
                         actualizadas=int(row[5] or 0),
                         sin_cambios=int(row[6] or 0),
                         rechazadas=int(row[7] or 0),
-                        pct_sin_cambios=row[8] or "—",
+                        pct_sin_cambios=row[8] or "-",
                         error=row[9],
                     )
                     for row in cur.fetchall()

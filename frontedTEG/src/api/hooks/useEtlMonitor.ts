@@ -3,8 +3,6 @@ import { API_BASE } from '../../config/env'
 import type { EtlMonitorResponse, EtlRunRequest, EtlRunResponse } from '../../types/etl'
 
 const ETL_MONITOR_KEY = ['etl', 'monitor']
-const POLL_ACTIVE = 5_000  // 5s when batches are running
-const POLL_IDLE = 30_000   // 30s otherwise
 
 async function fetchEtlMonitor(): Promise<EtlMonitorResponse> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -40,13 +38,6 @@ export function useEtlMonitor() {
   return useQuery({
     queryKey: ETL_MONITOR_KEY,
     queryFn: fetchEtlMonitor,
-    refetchInterval: (query) => {
-      const data = query.state.data
-      if (!data) return POLL_IDLE
-      const hasRunning = (data.current_batches?.length ?? 0) > 0
-        || (data.summary?.running_batches ?? 0) > 0
-      return hasRunning ? POLL_ACTIVE : POLL_IDLE
-    },
   })
 }
 

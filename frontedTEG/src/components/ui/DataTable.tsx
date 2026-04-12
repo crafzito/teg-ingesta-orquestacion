@@ -22,7 +22,7 @@ interface DataTableProps<T> {
   isLoading?: boolean
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   data,
   columns,
   pageSize = 20,
@@ -38,7 +38,10 @@ export function DataTable<T extends Record<string, unknown>>({
     if (!search) return data
     const lower = search.toLowerCase()
     return data.filter((row) =>
-      columns.some((col) => String(row[col.key] ?? '').toLowerCase().includes(lower))
+      columns.some((col) => {
+        const value = (row as Record<string, unknown>)[String(col.key)]
+        return String(value ?? '').toLowerCase().includes(lower)
+      })
     )
   }, [data, search, columns])
 
@@ -46,7 +49,8 @@ export function DataTable<T extends Record<string, unknown>>({
     if (!sortDescriptor.column) return filtered
     const col = sortDescriptor.column
     return [...filtered].sort((a, b) => {
-      const av = a[col], bv = b[col]
+      const av = (a as Record<string, unknown>)[col]
+      const bv = (b as Record<string, unknown>)[col]
       if (av == null) return 1
       if (bv == null) return -1
       const cmp = typeof av === 'number' && typeof bv === 'number'
@@ -61,7 +65,8 @@ export function DataTable<T extends Record<string, unknown>>({
 
   const renderCell = useCallback((item: T, columnKey: string) => {
     const col = columns.find((c) => String(c.key) === columnKey)
-    if (!col) return String(item[columnKey] ?? '-')
+    const record = item as Record<string, unknown>
+    if (!col) return String(record[columnKey] ?? '-')
     if (col.render) return col.render(item[col.key], item)
     return String(item[col.key] ?? '-')
   }, [columns])
@@ -126,7 +131,7 @@ export function DataTable<T extends Record<string, unknown>>({
         )}
       </TableHeader>
       <TableBody
-        items={paged.map((item, i) => ({ ...item, _key: String(i) }))}
+        items={paged.map((item, i) => ({ row: item, _key: String(i) }))}
         isLoading={isLoading}
         loadingContent={<Spinner color="primary" />}
         emptyContent="Sin datos"
@@ -134,7 +139,7 @@ export function DataTable<T extends Record<string, unknown>>({
         {(item) => (
           <TableRow key={item._key as string}>
             {(columnKey) => (
-              <TableCell>{renderCell(item as T, String(columnKey))}</TableCell>
+              <TableCell>{renderCell(item.row as T, String(columnKey))}</TableCell>
             )}
           </TableRow>
         )}

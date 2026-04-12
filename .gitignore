@@ -57,6 +57,10 @@ node_modules/
 dist/
 build/
 coverage/
+*.tsbuildinfo
+
+# Local archive drops
+AutomatizacionLookerETL.zip
 
 # Misc
 /docs/

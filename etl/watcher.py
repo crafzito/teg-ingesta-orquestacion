@@ -65,20 +65,34 @@ class DebouncedETLHandler(FileSystemEventHandler):
         self._lock = threading.Lock()
         self._changed_files = set()
         self._running = False
+        self._ignored_suffixes = {".tmp", ".part", ".partial", ".crdownload"}
 
         # Snapshot de MD5 al inicio para detectar cambios reales
         self._file_hashes = self._snapshot_hashes()
         logger.info(f"Snapshot inicial: {len(self._file_hashes)} archivos monitoreados")
 
+    def _iter_files(self):
+        for f in Path(self.data_dir).rglob("*"):
+            if f.is_file() and f.suffix.lower() in self.extensions and not self._should_ignore(f):
+                yield f
+
+    def _should_ignore(self, filepath: str | Path) -> bool:
+        path = Path(filepath)
+        name = path.name.lower()
+        return (
+            name.startswith("~$")
+            or name.startswith(".")
+            or path.suffix.lower() in self._ignored_suffixes
+        )
+
     def _snapshot_hashes(self) -> dict:
         """MD5 de todos los archivos monitoreados."""
         hashes = {}
-        for f in Path(self.data_dir).iterdir():
-            if f.is_file() and f.suffix.lower() in self.extensions:
-                try:
-                    hashes[str(f)] = self._file_md5(str(f))
-                except OSError:
-                    pass
+        for f in self._iter_files():
+            try:
+                hashes[str(f)] = self._file_md5(str(f))
+            except OSError:
+                pass
         return hashes
 
     @staticmethod
@@ -112,10 +126,18 @@ class DebouncedETLHandler(FileSystemEventHandler):
             return
         self._handle_change(event.src_path)
 
+    def on_moved(self, event):
+        if event.is_directory:
+            return
+        self._handle_change(event.dest_path)
+
     def _handle_change(self, filepath: str):
         """Procesa un cambio detectado en un archivo."""
-        ext = Path(filepath).suffix.lower()
+        path = Path(filepath)
+        ext = path.suffix.lower()
         if ext not in self.extensions:
+            return
+        if self._should_ignore(path):
             return
 
         # Esperar un momento para que el archivo termine de escribirse
@@ -125,7 +147,7 @@ class DebouncedETLHandler(FileSystemEventHandler):
         if not self._content_changed(filepath):
             return
 
-        filename = os.path.basename(filepath)
+        filename = os.path.relpath(filepath, self.data_dir)
         with self._lock:
             self._changed_files.add(filename)
             logger.info(
@@ -274,7 +296,7 @@ Flujo:
     )
 
     observer = Observer()
-    observer.schedule(handler, data_dir, recursive=False)
+    observer.schedule(handler, data_dir, recursive=True)
     observer.start()
 
     try:

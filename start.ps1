@@ -574,7 +574,7 @@ if ($DryRun) {
 
 if ($StartFrontend) {
     Write-Step "Preparando frontend"
-    $frontendDir = Join-Path $Root "frontend"
+    $frontendDir = Join-Path $Root "frontedTEG"
     $nodeModules = Join-Path $frontendDir "node_modules"
     $lockFile = Join-Path $frontendDir "package-lock.json"
 
@@ -634,9 +634,9 @@ try {
 
     $frontend = $null
     if ($StartFrontend) {
-        $viteScript = Join-Path $Root "frontend\node_modules\vite\bin\vite.js"
+        $viteScript = Join-Path $Root "frontedTEG\node_modules\vite\bin\vite.js"
         if (-not (Test-Path $viteScript)) {
-            throw "No se encontro Vite en frontend/node_modules. Reinstala dependencias del frontend."
+            throw "No se encontro Vite en frontedTEG/node_modules. Reinstala dependencias del frontend."
         }
 
         $frontend = Start-ManagedProcess `
@@ -644,11 +644,11 @@ try {
             -DisplayName "frontend Vite" `
             -FilePath $nodeCmd `
             -Arguments @($viteScript, "--host", "0.0.0.0") `
-            -WorkingDirectory (Join-Path $Root "frontend")
+            -WorkingDirectory (Join-Path $Root "frontedTEG")
         if (-not $frontend.already_running) {
             $startedThisRun += $frontend
         }
-        Wait-ForHttpReady -DisplayName "Frontend" -Url "http://localhost:5173" -TimeoutSec 45
+        Wait-ForHttpReady -DisplayName "Frontend" -Url "http://localhost:5176" -TimeoutSec 45
     }
 } catch {
     if (@($startedThisRun).Count -gt 0) {

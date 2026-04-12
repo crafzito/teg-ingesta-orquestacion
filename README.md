@@ -57,7 +57,7 @@ Esto prepara el entorno y levanta:
 - PostgreSQL en Docker
 - Backend FastAPI en `http://localhost:8000`
 - Watcher ETL sobre `data/input/`
-- Frontend Vite en `http://localhost:5173`
+- Frontend Vite en `http://localhost:5176`
 
 Para iniciar todo y correr ademas una carga ETL inicial:
 
@@ -88,7 +88,7 @@ Para detener los servicios lanzados en background:
 ```
 
 Una vez levantado el stack:
-- Frontend: http://localhost:5173
+- Frontend: http://localhost:5176
 - API: http://localhost:8000
 - API docs (Swagger): http://localhost:8000/docs
 - Health check: http://localhost:8000/api/health
@@ -130,14 +130,14 @@ Tests disponibles:
 ### Lint del frontend
 
 ```bash
-cd frontend
+cd frontedTEG
 npm run lint
 ```
 
 ### Build del frontend
 
 ```bash
-cd frontend
+cd frontedTEG
 npm run build
 ```
 
@@ -171,7 +171,7 @@ TEG/
 │   ├── cleaners/            # Transformaciones
 │   ├── loaders/             # Carga a PostgreSQL
 │   └── parsers/             # Parseo y helpers
-├── frontend/               # Interfaz web (React + Vite)
+├── frontedTEG/             # Interfaz web (React + Vite)
 ├── sql/                    # Scripts DDL (001-008)
 ├── tests/                  # Tests unitarios (pytest)
 ├── data/                   # Archivos de datos

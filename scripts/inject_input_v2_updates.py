@@ -9,7 +9,9 @@ produce new hashes and new/updated rows for testing.
 
 from __future__ import annotations
 
+import argparse
 import csv
+import hashlib
 import re
 import shutil
 import unicodedata
@@ -19,9 +21,11 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TARGET_DIR = PROJECT_ROOT / "data" / "input_v2"
-BACKUP_ROOT = PROJECT_ROOT / ".runtime" / "backups"
+DEFAULT_TARGET_DIR = PROJECT_ROOT / "data" / "input_v2"
+DEFAULT_BACKUP_ROOT = PROJECT_ROOT / ".runtime" / "backups"
 ANCHOR_DATE = date(2026, 3, 13)
+DEFAULT_MUTATION_TAG = ANCHOR_DATE.strftime("%Y%m%d")
+KPI_FILES = {"PHXX.CSV", "PEDIDOS20.CSV", "PEDIDOSFULL20.CSV"}
 
 DATE_YYYYMMDD = re.compile(r"^\d{8}$")
 DATE_DOTS = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
@@ -38,12 +42,20 @@ class MutationSummary:
     row_count_after: int
     rows_touched: int
     created_row: bool
+    appended_row: bool
 
 
 def normalize(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text)
     ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
     return ascii_text.strip().lower()
+
+
+def fit_like_original(original: str, replacement: str, fallback_max: int = 80) -> str:
+    max_len = len(original.strip()) if original and original.strip() else fallback_max
+    if max_len <= 0:
+        max_len = fallback_max
+    return replacement[:max_len]
 
 
 def format_date_like(value: str) -> str:
@@ -98,13 +110,18 @@ def format_european_number(number: float, decimals: int) -> str:
     return sign + fmt.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def bump_numeric(value: str, file_index: int, row_index: int) -> str:
+def compute_tag_offset(tag: str) -> int:
+    digest = hashlib.sha1(tag.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % 11 + 1
+
+
+def bump_numeric(value: str, file_index: int, row_index: int, tag_offset: int) -> str:
     parsed = parse_european_number(value)
     if parsed is None:
         return value
 
     number, decimals = parsed
-    step = 1 + ((file_index + row_index) % 5 + 1) * 0.03
+    step = 1 + (((file_index + row_index + tag_offset) % 7) + 1) * 0.025
     bumped = number * step
     return format_european_number(bumped, max(decimals, 2 if "," in value else decimals))
 
@@ -144,6 +161,34 @@ def is_identifier_column(header_norm: str) -> bool:
     return any(token in header_norm for token in identifier_tokens)
 
 
+def is_document_key_column(header_norm: str) -> bool:
+    document_tokens = (
+        "factura",
+        "pedido",
+        "doc",
+        "documento",
+        "numero",
+        "nro",
+        "referencia",
+        "sal.mcias",
+    )
+    protected_tokens = (
+        "material",
+        "cliente",
+        "sociedad",
+        "centro",
+        "alm",
+        "vendedor",
+        "gven",
+        "lista",
+        "canal",
+        "zona",
+    )
+    return any(token in header_norm for token in document_tokens) and not any(
+        token in header_norm for token in protected_tokens
+    )
+
+
 def is_metric_column(header_norm: str) -> bool:
     metric_tokens = (
         "cantidad",
@@ -175,7 +220,34 @@ def is_text_column(header_norm: str) -> bool:
     return any(token in header_norm for token in text_tokens)
 
 
-def mutate_cell(header: str, value: str, file_index: int, row_index: int) -> str:
+def unique_identifier(value: str, mutation_tag: str, file_index: int, row_index: int) -> str:
+    raw = value.strip()
+    tag_digits = "".join(ch for ch in mutation_tag if ch.isdigit()) or str(file_index + row_index + 1)
+
+    if raw.isdigit():
+        replacement = (tag_digits * ((len(raw) // len(tag_digits)) + 2))[: len(raw)]
+        prefix = raw[: max(0, len(raw) - len(replacement))]
+        return (prefix + replacement)[-len(raw):]
+
+    if raw:
+        suffix = f"-{mutation_tag[-6:]}"
+        candidate = f"{raw}{suffix}"
+        if len(candidate) <= len(raw):
+            return candidate
+        trimmed = f"{raw[: max(1, len(raw) - len(suffix))]}{suffix}"
+        return fit_like_original(raw, trimmed, fallback_max=len(raw))
+
+    return mutation_tag[-10:]
+
+
+def mutate_cell(
+    header: str,
+    value: str,
+    file_index: int,
+    row_index: int,
+    mutation_tag: str,
+    tag_offset: int,
+) -> str:
     header_norm = normalize(header)
     raw = value.strip()
     is_date_like_value = bool(
@@ -202,7 +274,10 @@ def mutate_cell(header: str, value: str, file_index: int, row_index: int) -> str
         return format_date_like(raw)
 
     if raw and is_metric_column(header_norm):
-        return bump_numeric(raw, file_index, row_index)
+        return bump_numeric(raw, file_index, row_index, tag_offset)
+
+    if raw and is_document_key_column(header_norm):
+        return unique_identifier(raw, mutation_tag, file_index, row_index)
 
     if is_date_column(header_norm):
         if raw and raw not in {"00.00.0000", "00000000"}:
@@ -215,7 +290,10 @@ def mutate_cell(header: str, value: str, file_index: int, row_index: int) -> str
         return "081500"
 
     if is_text_column(header_norm) and raw and len(raw) < 80:
-        return f"{raw} ACT 13-03"
+        suffix = f" ACT {mutation_tag[-6:]}"
+        base = raw.split(" ACT ")[0].strip()
+        candidate = f"{base}{suffix}"
+        return fit_like_original(raw, candidate, fallback_max=80)
 
     return value
 
@@ -238,7 +316,7 @@ def choose_fallback_column(headers: list[str], row: list[str]) -> int:
     return 0
 
 
-def build_synthetic_row(headers: list[str]) -> list[str]:
+def build_synthetic_row(headers: list[str], mutation_tag: str) -> list[str]:
     row: list[str] = []
     for header in headers:
         header_norm = normalize(header)
@@ -261,8 +339,10 @@ def build_synthetic_row(headers: list[str]) -> list[str]:
             row.append("1,000")
         elif header_norm in {"um", "cb", "un"}:
             row.append("UN")
+        elif is_document_key_column(header_norm):
+            row.append(unique_identifier("", mutation_tag, 0, 0))
         elif "texto" in header_norm or "descripcion" in header_norm or "denominacion" in header_norm:
-            row.append("ACTUALIZADO 13-03-2026")
+            row.append(f"ACTUALIZADO {mutation_tag[-6:]}")
         else:
             row.append("")
     return row
@@ -289,17 +369,58 @@ def write_csv(path: Path, headers: list[str], rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
-def mutate_file(path: Path, file_index: int) -> MutationSummary:
+def append_incremental_row(
+    filename: str,
+    headers: list[str],
+    rows: list[list[str]],
+    file_index: int,
+    mutation_tag: str,
+    tag_offset: int,
+) -> bool:
+    if filename.upper() not in KPI_FILES:
+        return False
+
+    source_row = list(rows[0]) if rows else build_synthetic_row(headers, mutation_tag)
+    synthetic = list(source_row)
+
+    for column_index, header in enumerate(headers):
+        if column_index >= len(synthetic):
+            synthetic.append("")
+
+        current_value = synthetic[column_index]
+        header_norm = normalize(header)
+
+        if is_document_key_column(header_norm):
+            synthetic[column_index] = unique_identifier(current_value, mutation_tag, file_index, len(rows) + column_index)
+        elif is_metric_column(header_norm) and current_value.strip():
+            synthetic[column_index] = bump_numeric(current_value, file_index + 5, len(rows) + column_index, tag_offset + 3)
+        elif is_date_column(header_norm) and current_value.strip():
+            synthetic[column_index] = format_date_like(current_value)
+        elif is_text_column(header_norm) and current_value.strip():
+            base = current_value.split(" ACT ")[0].strip()
+            synthetic[column_index] = fit_like_original(
+                current_value,
+                f"{base} ACT {mutation_tag[-6:]}",
+                fallback_max=80,
+            )
+
+    rows.append(synthetic)
+    return True
+
+
+def mutate_file(path: Path, file_index: int, mutation_tag: str) -> MutationSummary:
     headers, rows = read_csv(path)
     if not headers:
-        return MutationSummary(path.name, 0, 0, 0, False)
+        return MutationSummary(path.name, 0, 0, 0, False, False)
 
     created_row = False
+    appended_row = False
     rows_touched = 0
     original_count = len(rows)
+    tag_offset = compute_tag_offset(f"{mutation_tag}:{path.name}")
 
     if not rows:
-        rows.append(build_synthetic_row(headers))
+        rows.append(build_synthetic_row(headers, mutation_tag))
         created_row = True
 
     for row_index, row in enumerate(rows[:2]):
@@ -308,7 +429,14 @@ def mutate_file(path: Path, file_index: int) -> MutationSummary:
         for column_index, header in enumerate(headers):
             if column_index >= len(target):
                 target.append("")
-            new_value = mutate_cell(header, target[column_index], file_index, row_index)
+            new_value = mutate_cell(
+                header,
+                target[column_index],
+                file_index,
+                row_index,
+                mutation_tag,
+                tag_offset,
+            )
             if new_value != target[column_index]:
                 target[column_index] = new_value
                 changed = True
@@ -322,13 +450,22 @@ def mutate_file(path: Path, file_index: int) -> MutationSummary:
         if changed:
             rows_touched += 1
 
+    appended_row = append_incremental_row(
+        path.name,
+        headers,
+        rows,
+        file_index,
+        mutation_tag,
+        tag_offset,
+    )
+
     write_csv(path, headers, rows)
-    return MutationSummary(path.name, original_count, len(rows), rows_touched, created_row)
+    return MutationSummary(path.name, original_count, len(rows), rows_touched, created_row, appended_row)
 
 
-def make_backup(target_dir: Path) -> Path:
-    BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
-    backup_dir = BACKUP_ROOT / f"input_v2-before-inject-{ANCHOR_DATE.strftime('%Y%m%d')}"
+def make_backup(target_dir: Path, backup_root: Path) -> Path:
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup_dir = backup_root / f"{target_dir.name}-before-inject-{ANCHOR_DATE.strftime('%Y%m%d')}"
     if backup_dir.exists():
         shutil.rmtree(backup_dir)
     shutil.copytree(target_dir, backup_dir)
@@ -336,26 +473,46 @@ def make_backup(target_dir: Path) -> Path:
 
 
 def main() -> None:
-    if not TARGET_DIR.exists():
-        raise SystemExit(f"No existe la carpeta objetivo: {TARGET_DIR}")
+    parser = argparse.ArgumentParser(description="Inyecta cambios determinísticos en un directorio CSV.")
+    parser.add_argument("--target-dir", default=str(DEFAULT_TARGET_DIR), help="Directorio objetivo con CSV SAP")
+    parser.add_argument("--backup-root", default=str(DEFAULT_BACKUP_ROOT), help="Raíz para backups previos")
+    parser.add_argument(
+        "--mutation-tag",
+        default=DEFAULT_MUTATION_TAG,
+        help="Tag para forzar cambios únicos por corrida (ej: 20260412191500)",
+    )
+    args = parser.parse_args()
 
-    backup_dir = make_backup(TARGET_DIR)
-    csv_files = sorted(TARGET_DIR.glob("*.CSV"))
+    target_dir = Path(args.target_dir).resolve()
+    backup_root = Path(args.backup_root).resolve()
+    mutation_tag = args.mutation_tag.strip() or DEFAULT_MUTATION_TAG
+
+    if not target_dir.exists():
+        raise SystemExit(f"No existe la carpeta objetivo: {target_dir}")
+
+    backup_dir = make_backup(target_dir, backup_root)
+    csv_files = sorted(target_dir.rglob("*.CSV"))
     if not csv_files:
-        raise SystemExit(f"No se encontraron CSV en {TARGET_DIR}")
+        raise SystemExit(f"No se encontraron CSV en {target_dir}")
 
     print("=" * 70)
-    print(f"Inyectando cambios sobre {TARGET_DIR}")
+    print(f"Inyectando cambios sobre {target_dir}")
     print(f"Fecha ancla: {ANCHOR_DATE.isoformat()}")
+    print(f"Mutation tag: {mutation_tag}")
     print(f"Backup:      {backup_dir}")
     print(f"Archivos:    {len(csv_files)}")
     print("=" * 70)
 
     summaries: list[MutationSummary] = []
     for index, csv_path in enumerate(csv_files):
-        summary = mutate_file(csv_path, index)
+        summary = mutate_file(csv_path, index, mutation_tag)
         summaries.append(summary)
-        suffix = " +row" if summary.created_row else ""
+        flags = []
+        if summary.created_row:
+            flags.append("seed-row")
+        if summary.appended_row:
+            flags.append("appended-kpi")
+        suffix = f" ({', '.join(flags)})" if flags else ""
         print(
             f"{summary.filename:<30} "
             f"{summary.row_count_before:>6} -> {summary.row_count_after:>6} "

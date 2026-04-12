@@ -947,7 +947,7 @@ def run(
 # Refresh vistas materializadas (Looker Studio)
 # ──────────────────────────────────────────────────────────────────
 
-_MATERIALIZED_VIEWS = [
+_REPORTING_ARTIFACTS = [
     "public.v_ventas",
     "public.v_cxc",
     "public.v_cxp",
@@ -958,18 +958,42 @@ _MATERIALIZED_VIEWS = [
 
 
 def refresh_materialized_views():
-    """Refresca todas las vistas materializadas en public para que
-    Looker Studio vea la data actualizada sin JOINs en tiempo real."""
-    logger.info("── Refrescando vistas materializadas ──────────────")
+    """Refresca solo los materialized views existentes y valida que las vistas
+    reporting/public esperadas sigan disponibles.
+
+    El esquema actual define `public.v_*` como vistas normales; intentar hacer
+    `REFRESH MATERIALIZED VIEW` sobre ellas genera errores ruidosos y confusos
+    al final del pipeline. Este helper detecta qué artefactos son realmente
+    materialized views antes de refrescarlos.
+    """
+    logger.info("── Validando artefactos reporting/public ───────────")
     with get_connection(DSN) as conn:
         conn.autocommit = True
         with conn.cursor() as cur:
-            for mv in _MATERIALIZED_VIEWS:
-                try:
-                    cur.execute(f"REFRESH MATERIALIZED VIEW {mv}")
-                    logger.info(f"  {mv} ✓")
-                except Exception as e:
-                    logger.warning(f"  {mv} FALLÓ: {e}")
+            cur.execute(
+                """
+                SELECT schemaname || '.' || matviewname
+                FROM pg_matviews
+                WHERE schemaname = 'public'
+                """
+            )
+            materialized_views = {row[0] for row in cur.fetchall()}
+
+            for artifact in _REPORTING_ARTIFACTS:
+                if artifact in materialized_views:
+                    try:
+                        cur.execute(f"REFRESH MATERIALIZED VIEW {artifact}")
+                        logger.info(f"  {artifact} materialized view refrescada ✓")
+                    except Exception as e:
+                        logger.warning(f"  {artifact} materialized view FALLÓ: {e}")
+                    continue
+
+                cur.execute("SELECT to_regclass(%s)", (artifact,))
+                regclass = cur.fetchone()[0]
+                if regclass:
+                    logger.info(f"  {artifact} es vista/tablas normal; no requiere refresh")
+                else:
+                    logger.warning(f"  {artifact} no existe en la base de datos")
         conn.autocommit = False
 
 

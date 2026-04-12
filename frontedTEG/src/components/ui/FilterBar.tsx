@@ -11,19 +11,23 @@ const SOCIEDADES = [
 
 export function FilterBar() {
   const { selectedSociedad, setSociedad } = useUiStore()
+  const selectedKey = selectedSociedad || 'all'
 
   return (
     <div className="flex items-center gap-3 mb-6">
       <Select
         label="Sociedad"
-        selectedKeys={[selectedSociedad]}
-        onChange={(e) => setSociedad(e.target.value as Sociedad)}
+        selectedKeys={[selectedKey]}
+        onSelectionChange={(keys) => {
+          const next = Array.from(keys)[0]
+          setSociedad((next === 'all' ? '' : String(next)) as Sociedad)
+        }}
         className="max-w-xs"
         size="sm"
         variant="bordered"
       >
         {SOCIEDADES.map((s) => (
-          <SelectItem key={s.value} value={s.value}>
+          <SelectItem key={s.value || 'all'}>
             {s.label}
           </SelectItem>
         ))}

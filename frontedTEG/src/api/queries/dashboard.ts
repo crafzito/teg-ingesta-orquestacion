@@ -31,7 +31,7 @@ export function kpiOrdenesActivas(soc: Sociedad): string {
 }
 
 export function kpiPedidosMes(soc: Sociedad): string {
-  return `SELECT COUNT(DISTINCT num_pedido) as total FROM public.v_pedidos WHERE es_mes_actual = true`
+  return `SELECT COUNT(DISTINCT num_pedido) as total FROM public.v_pedidos WHERE es_mes_actual = true${socFilter(soc)}`
 }
 
 export function chartVentasMensuales(soc: Sociedad): string {
@@ -97,7 +97,7 @@ export function chartPedidosStatus(soc: Sociedad): string {
       status as nombre,
       COUNT(*) as total
     FROM public.v_pedidos
-    WHERE 1=1
+    WHERE 1=1${socFilter(soc)}
     GROUP BY status
     ORDER BY total DESC
   `

@@ -421,7 +421,7 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
           <div className="flex items-center gap-3 sm:gap-4 text-sm text-default-500 pl-6 sm:pl-0">
             <MetricPill label="Archivos" value={fmtNumber(batch.file_count)} />
             <MetricPill label="Leidas" value={fmtNumber(batch.rows_read_total)} />
-            <MetricPill label="Nuevas" value={fmtNumber(batch.rows_inserted_total)} />
+            <MetricPill label="Insertadas" value={fmtNumber(batch.rows_inserted_total)} />
             <MetricPill label="Actualizadas" value={fmtNumber(batch.rows_updated_total)} />
           </div>
         </button>
@@ -460,7 +460,7 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                       <TableColumn>Fuente</TableColumn>
                       <TableColumn>Estado</TableColumn>
                       <TableColumn align="end">Leidas</TableColumn>
-                      <TableColumn align="end">Nuevas</TableColumn>
+                      <TableColumn align="end">Insertadas</TableColumn>
                       <TableColumn align="end">Actualizadas</TableColumn>
                       <TableColumn align="end">Rechazadas</TableColumn>
                       <TableColumn>Error</TableColumn>
@@ -535,7 +535,7 @@ function BatchFileCard({ file }: { file: EtlBatchFileItem }) {
           <p className="text-xs font-semibold tabular-nums">{file.rows_read > 0 ? fmtNumber(file.rows_read) : '\u2014'}</p>
         </div>
         <div>
-          <p className="text-[10px] uppercase text-default-400">Nuevas</p>
+          <p className="text-[10px] uppercase text-default-400">Insertadas</p>
           <p className="text-xs font-semibold tabular-nums">{fmtNumber(file.rows_inserted)}</p>
         </div>
         <div>
@@ -590,7 +590,7 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
                     <p className="text-xs font-semibold tabular-nums">{fmtNumber(row.leidas)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] uppercase text-default-400">Nuevas</p>
+                    <p className="text-[10px] uppercase text-default-400">Insertadas</p>
                     <p className="text-xs font-semibold tabular-nums">{fmtNumber(row.nuevas)}</p>
                   </div>
                   <div>
@@ -632,7 +632,7 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
             <TableColumn>Estado</TableColumn>
             <TableColumn>Ultima Carga</TableColumn>
             <TableColumn align="end">Leidas</TableColumn>
-            <TableColumn align="end">Nuevas</TableColumn>
+            <TableColumn align="end">Insertadas</TableColumn>
             <TableColumn align="end">Actualizadas</TableColumn>
             <TableColumn align="end">Sin Cambios</TableColumn>
             <TableColumn align="end">Rechazadas</TableColumn>
@@ -721,7 +721,7 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
                   <p className="text-xs font-semibold tabular-nums">{fmtNumber(exec.rows_read)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-default-400">Nuevas</p>
+                  <p className="text-[10px] uppercase text-default-400">Insertadas</p>
                   <p className="text-xs font-semibold tabular-nums">{fmtNumber(exec.rows_inserted)}</p>
                 </div>
                 <div>
@@ -760,7 +760,7 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
             <TableColumn>Inicio</TableColumn>
             <TableColumn>Fin</TableColumn>
             <TableColumn align="end">Leidas</TableColumn>
-            <TableColumn align="end">Nuevas</TableColumn>
+            <TableColumn align="end">Insertadas</TableColumn>
             <TableColumn align="end">Actualizadas</TableColumn>
             <TableColumn align="end">Rechazadas</TableColumn>
             <TableColumn>Error</TableColumn>

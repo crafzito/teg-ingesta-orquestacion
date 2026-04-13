@@ -15,8 +15,8 @@ export default function UnauthorizedPage() {
           <div className="flex items-center gap-3 text-warning-700">
             <ShieldAlert className="h-6 w-6" />
             <p className="text-sm font-medium">
-              Tu rol actual no tiene acceso a este módulo. Si necesitas operar el monitor ETL o la administración,
-              solicita privilegios de administrador.
+              Tu rol actual no tiene acceso a este módulo. La administración global es exclusiva de superadmin,
+              mientras que el monitor ETL queda reservado a perfiles operativos autorizados.
             </p>
           </div>
           <div>

@@ -106,7 +106,7 @@ def list_schema_relations(schemas: str | None = None):
 
 
 @router.post("/refresh")
-def refresh_schema():
+def refresh_schema(current_user=Depends(require_role({"superadmin"}))):
     reset_schema_cache()
     return {"status": "refreshed"}
 

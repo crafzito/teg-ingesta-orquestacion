@@ -122,7 +122,7 @@ def create_looker_view(req: CreateLookerViewRequest):
 
 
 @router.delete("/looker/views/{view_name}", status_code=200)
-def delete_looker_view(view_name: str):
+def delete_looker_view(view_name: str, current_user=Depends(require_role({"superadmin"}))):
     if not SAFE_VIEW_NAME.match(view_name):
         raise HTTPException(400, "Nombre de vista inválido")
     if is_protected(view_name):

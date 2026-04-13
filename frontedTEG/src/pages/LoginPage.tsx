@@ -6,7 +6,7 @@ import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 
 const DEMO_CREDENTIALS = [
-  'superadmin / Admin#2026',
+  'superadmin / SuperAdmin#2026',
   'admin / Admin#2026',
   'analista / Analista#2026',
 ]

@@ -12,6 +12,7 @@ const PedidosPage = lazy(() => import('../pages/PedidosPage'))
 const ClientesPage = lazy(() => import('../pages/ClientesPage'))
 const ProductosPage = lazy(() => import('../pages/ProductosPage'))
 const EtlMonitorPage = lazy(() => import('../pages/EtlMonitorPage'))
+const AdminPage = lazy(() => import('../pages/AdminPage'))
 
 export interface AppRouteItem {
   path: string
@@ -21,6 +22,7 @@ export interface AppRouteItem {
 
 const ALL_ROLES: UserRole[] = ['superadmin', 'admin', 'analista']
 const ADMIN_ROLES: UserRole[] = ['superadmin', 'admin']
+const SUPERADMIN_ROLES: UserRole[] = ['superadmin']
 
 export const appRoutes: AppRouteItem[] = [
   { path: '/', element: DashboardPage, allowedRoles: ALL_ROLES },
@@ -33,4 +35,5 @@ export const appRoutes: AppRouteItem[] = [
   { path: '/clientes', element: ClientesPage, allowedRoles: ALL_ROLES },
   { path: '/productos', element: ProductosPage, allowedRoles: ALL_ROLES },
   { path: '/etl', element: EtlMonitorPage, allowedRoles: ADMIN_ROLES },
+  { path: '/administracion', element: AdminPage, allowedRoles: SUPERADMIN_ROLES },
 ]

@@ -28,14 +28,14 @@ load_dotenv()
 SEED_USERS = [
     {
         "username": "superadmin",
-        "password": "Admin#2026",
-        "full_name": "Super Administrador",
+        "password": "SuperAdmin#2026",
+        "full_name": "Superadministrador del Sistema",
         "role": "superadmin",
     },
     {
         "username": "admin",
         "password": "Admin#2026",
-        "full_name": "Administrador",
+        "full_name": "Administrador Operativo",
         "role": "admin",
     },
     {

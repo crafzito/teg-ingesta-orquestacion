@@ -8,6 +8,7 @@ import {
   Factory,
   LayoutDashboard,
   Package,
+  ShieldCheck,
   ShoppingCart,
   TrendingUp,
   Users,
@@ -59,6 +60,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: 'Sistema',
     items: [
       { to: '/etl', icon: Activity, label: 'Monitor ETL', allowedRoles: ['superadmin', 'admin'] },
+      { to: '/administracion', icon: ShieldCheck, label: 'Administración', allowedRoles: ['superadmin'] },
     ],
   },
 ]

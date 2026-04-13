@@ -234,3 +234,42 @@ class EtlRunResponse(BaseModel):
     message: str
     pid: int | None = None
     data_dir: str | None = None
+
+
+class AdminUserItem(BaseModel):
+    id: int
+    username: str
+    full_name: str | None
+    role: str
+    active: bool
+    last_login: datetime.datetime | None
+
+
+class AdminProtectedAction(BaseModel):
+    key: str
+    label: str
+    endpoint: str
+    required_role: str
+    description: str
+
+
+class AdminRoleCapability(BaseModel):
+    role: str
+    summary: str
+    capabilities: list[str]
+
+
+class AdminOverviewResponse(BaseModel):
+    generated_at: datetime.datetime
+    total_users: int
+    active_users: int
+    superadmin_count: int
+    admin_count: int
+    analyst_count: int
+    custom_public_views: int
+    protected_public_views: int
+    monitored_directories: list[str]
+    system_flags: dict[str, str]
+    users: list[AdminUserItem]
+    protected_actions: list[AdminProtectedAction]
+    role_matrix: list[AdminRoleCapability]

@@ -5,10 +5,26 @@ import { useAuthStore } from '../../stores/authStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ROLE_LABELS } from '../../types/auth'
 
+const ROLE_META = {
+  superadmin: {
+    chipColor: 'secondary' as const,
+    subtitle: 'Gobernanza total',
+  },
+  admin: {
+    chipColor: 'primary' as const,
+    subtitle: 'Operación y ETL',
+  },
+  analista: {
+    chipColor: 'default' as const,
+    subtitle: 'Consulta y dashboards',
+  },
+}
+
 export function Header() {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const { sidebarOpen, isMobile, toggleSidebar } = useUiStore()
+  const roleMeta = user?.role ? ROLE_META[user.role] : null
 
   const leftOffset = isMobile ? 'left-0' : (sidebarOpen ? 'left-64' : 'left-16')
 
@@ -44,9 +60,14 @@ export function Header() {
         <div className="hidden sm:flex flex-col items-end leading-tight">
           <span className="text-sm text-default-700">{user?.fullName ?? 'Usuario'}</span>
           {user?.role && (
-            <Chip size="sm" variant="flat" color="primary" className="mt-1">
+            <Chip size="sm" variant="flat" color={roleMeta?.chipColor ?? 'default'} className="mt-1">
               {ROLE_LABELS[user.role]}
             </Chip>
+          )}
+          {roleMeta && (
+            <span className="mt-1 text-xs font-medium uppercase tracking-wide text-default-400">
+              {roleMeta.subtitle}
+            </span>
           )}
         </div>
         <Button

@@ -28,7 +28,10 @@ export function withScopedPedidos(selectSql: string, soc: Sociedad): string {
     pedidos_base AS (
       SELECT
         p.*,
-        COALESCE(vms.sociedad, vcs.sociedad) AS sociedad_resuelta
+        CASE
+          WHEN vcs.sociedad IS NOT NULL AND vms.sociedad IS NOT NULL AND vcs.sociedad <> vms.sociedad THEN vcs.sociedad
+          ELSE COALESCE(vcs.sociedad, vms.sociedad)
+        END AS sociedad_resuelta
       FROM public.v_pedidos p
       LEFT JOIN ventas_material_sociedad vms ON p.codigo_mat = vms.codigo_mat
       LEFT JOIN ventas_cliente_sociedad vcs ON p.cod_cliente = vcs.cod_cliente

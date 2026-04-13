@@ -1,4 +1,5 @@
 import type { Sociedad } from '../../types/domain'
+import { withScopedPedidos } from './pedidosScope'
 
 function socFilter(soc: Sociedad, col = 'sociedad'): string {
   if (!soc) return ''
@@ -34,8 +35,11 @@ export function kpiOrdenesActivas(soc: Sociedad): string {
   return `SELECT COUNT(*) as total FROM public.v_ordenes WHERE estatus IN ('Abiertos', 'Liberados')${resilientSocFilter(soc, 'public.v_ordenes')}`
 }
 
-export function kpiPedidosMes(_soc: Sociedad): string {
-  return `SELECT COUNT(DISTINCT num_pedido) as total FROM public.v_pedidos WHERE es_mes_actual = true`
+export function kpiPedidosMes(soc: Sociedad): string {
+  return withScopedPedidos(
+    'SELECT COUNT(DISTINCT num_pedido) as total FROM pedidos_scoped WHERE es_mes_actual = true__SOC_FILTER__',
+    soc,
+  )
 }
 
 export function chartVentasMensuales(soc: Sociedad): string {
@@ -118,16 +122,19 @@ export function chartVentasSociedad(soc: Sociedad): string {
   `
 }
 
-export function chartPedidosStatus(_soc: Sociedad): string {
-  return `
-    SELECT
-      status as nombre,
-      COUNT(*) as total
-    FROM public.v_pedidos
-    WHERE 1=1
-    GROUP BY status
-    ORDER BY total DESC
-  `
+export function chartPedidosStatus(soc: Sociedad): string {
+  return withScopedPedidos(
+    `
+      SELECT
+        status as nombre,
+        COUNT(*) as total
+      FROM pedidos_scoped
+      WHERE 1=1__SOC_FILTER__
+      GROUP BY status
+      ORDER BY total DESC
+    `,
+    soc,
+  )
 }
 
 export function chartOrdenesCentro(soc: Sociedad): string {

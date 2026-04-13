@@ -16,6 +16,52 @@ interface GaugeChartCardProps {
   rightValue?: string
 }
 
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '')
+  const full = normalized.length === 3
+    ? normalized.split('').map((char) => char + char).join('')
+    : normalized
+
+  const value = Number.parseInt(full, 16)
+
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  }
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b]
+    .map((channel) => channel.toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function mixHexColors(from: string, to: string, factor: number) {
+  const start = hexToRgb(from)
+  const end = hexToRgb(to)
+  const clamped = Math.min(Math.max(factor, 0), 1)
+
+  return rgbToHex(
+    Math.round(start.r + (end.r - start.r) * clamped),
+    Math.round(start.g + (end.g - start.g) * clamped),
+    Math.round(start.b + (end.b - start.b) * clamped),
+  )
+}
+
+function getGaugeColor(value: number, min: number, max: number) {
+  const range = max - min
+  if (range <= 0) return '#ef4444'
+
+  const normalized = Math.min(Math.max((value - min) / range, 0), 1)
+
+  if (normalized <= 0.5) {
+    return mixHexColors('#ef4444', '#f59e0b', normalized * 2)
+  }
+
+  return mixHexColors('#f59e0b', '#22c55e', (normalized - 0.5) * 2)
+}
+
 export function GaugeChartCard({
   title,
   value,
@@ -24,13 +70,14 @@ export function GaugeChartCard({
   helperText,
   min = 0,
   max = 200,
-  color = '#091B6B',
+  color,
   leftLabel,
   leftValue,
   rightLabel,
   rightValue,
 }: GaugeChartCardProps) {
   const boundedValue = Math.min(Math.max(value, min), max)
+  const gaugeColor = color ?? getGaugeColor(boundedValue, min, max)
 
   return (
     <Card shadow="sm" className="border-none">
@@ -44,7 +91,7 @@ export function GaugeChartCard({
         <div className="relative h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <RadialBarChart
-              data={[{ value: boundedValue, fill: color }]}
+              data={[{ value: boundedValue, fill: gaugeColor }]}
               cx="50%"
               cy="56%"
               innerRadius="70%"
@@ -54,12 +101,14 @@ export function GaugeChartCard({
               endAngle={-30}
             >
               <PolarAngleAxis type="number" domain={[min, max]} tick={false} />
-              <RadialBar dataKey="value" cornerRadius={12} background />
+              <RadialBar dataKey="value" cornerRadius={12} background fill={gaugeColor} />
             </RadialBarChart>
           </ResponsiveContainer>
 
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pt-6 text-center">
-            <span className="text-3xl font-semibold tracking-tight text-foreground">{valueLabel}</span>
+            <span className="text-3xl font-semibold tracking-tight transition-colors" style={{ color: gaugeColor }}>
+              {valueLabel}
+            </span>
             {subtitle ? <span className="mt-1 text-xs text-default-500">{subtitle}</span> : null}
           </div>
 

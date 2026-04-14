@@ -22,10 +22,6 @@ import type {
   EtlExecutionItem,
 } from '../types/etl'
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const ASCII_DASH = '-'
 const MONITOR_REFRESH_MS = 5_000
 
@@ -99,10 +95,6 @@ function statusLabel(status: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export default function EtlMonitorPage() {
   const { data, isLoading, isError, error, refetch, isFetching } = useEtlMonitor()
   const etlRun = useEtlRun()
@@ -130,7 +122,6 @@ export default function EtlMonitorPage() {
     confirmModal.onClose()
   }, [etlRun, confirmModal])
 
-  // Combine current + recent for batches tab
   const allBatches = useMemo(() => {
     const ids = new Set<string>()
     const result: EtlBatchItem[] = []
@@ -143,7 +134,6 @@ export default function EtlMonitorPage() {
     return result
   }, [currentBatches, recentBatches])
 
-  // Header actions — stacks vertically on mobile
   const headerActions = (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
       <div className="flex items-center gap-2 text-xs sm:text-sm text-default-400 justify-center sm:justify-start">
@@ -201,7 +191,6 @@ export default function EtlMonitorPage() {
         actions={headerActions}
       />
 
-      {/* ETL run feedback */}
       {etlRun.isSuccess && (
         <div className="mb-3 sm:mb-4 rounded-xl bg-success-50 border border-success-200 p-2 sm:p-3 text-xs sm:text-sm text-success-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <span>{etlRun.data?.message ?? 'ETL iniciado correctamente'}</span>
@@ -215,7 +204,6 @@ export default function EtlMonitorPage() {
         </div>
       )}
 
-      {/* Database warning */}
       {data && !data.database_available && (
         <div className="mb-3 sm:mb-4 rounded-xl bg-warning-50 border border-warning-200 p-2 sm:p-3 text-xs sm:text-sm text-warning-700">
           La base de datos no esta disponible.
@@ -223,7 +211,6 @@ export default function EtlMonitorPage() {
         </div>
       )}
 
-      {/* Summary KPI cards — 1 col mobile, 2 col tablet, 4 col desktop */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <SummaryCard
           icon={<Activity className="h-5 w-5" />}
@@ -255,7 +242,6 @@ export default function EtlMonitorPage() {
         />
       </div>
 
-      {/* Tabs — full width, scrollable on mobile */}
       <Tabs
         aria-label="ETL Monitor tabs"
         color="primary"
@@ -265,7 +251,6 @@ export default function EtlMonitorPage() {
           tab: 'min-w-fit',
         }}
       >
-        {/* Tab 1: Batches recientes */}
         <Tab
           key="batches"
           title={
@@ -293,7 +278,6 @@ export default function EtlMonitorPage() {
           )}
         </Tab>
 
-        {/* Tab 2: Estado por fuente */}
         <Tab
           key="sources"
           title={
@@ -310,7 +294,6 @@ export default function EtlMonitorPage() {
           )}
         </Tab>
 
-        {/* Tab 3: Historial */}
         <Tab
           key="history"
           title={
@@ -328,7 +311,6 @@ export default function EtlMonitorPage() {
         </Tab>
       </Tabs>
 
-      {/* Confirm modal — responsive sizing */}
       <Modal
         isOpen={confirmModal.isOpen}
         onOpenChange={confirmModal.onOpenChange}
@@ -358,10 +340,6 @@ export default function EtlMonitorPage() {
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
 
 function SummaryCard({
   icon,
@@ -411,7 +389,6 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
       className={`border ${isActive ? 'border-[#091B6B]/30 bg-[#091B6B]/5' : 'border-default-200'}`}
     >
       <CardBody className="p-0">
-        {/* Header row */}
         <button
           className="w-full flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 text-left hover:bg-default-50 transition-colors rounded-t-lg gap-2 sm:gap-3"
           onClick={() => setExpanded(!expanded)}
@@ -443,7 +420,6 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
             </div>
           </div>
 
-          {/* Metrics — visible as inline pills on sm+, compact grid on mobile */}
           <div className="flex items-center gap-3 sm:gap-4 text-sm text-default-500 pl-6 sm:pl-0">
             <MetricPill label="Archivos" value={fmtNumber(batch.file_count)} />
             <MetricPill label="Leidas" value={fmtNumber(batch.rows_read_total)} />
@@ -452,27 +428,23 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
           </div>
         </button>
 
-        {/* Error message */}
         {batch.error_message && (
           <div className="mx-2 sm:mx-4 mb-2 rounded-lg bg-danger-50 border border-danger-100 px-2 sm:px-3 py-2 text-[11px] sm:text-xs text-danger break-words">
             {sanitizeDisplayText(batch.error_message)}
           </div>
         )}
 
-        {/* Expanded files */}
         {expanded && (
           <div className="border-t border-default-100 p-2 sm:p-4">
             {batch.files.length === 0 ? (
               <p className="text-xs sm:text-sm text-default-400 py-2">Este lote no tiene archivos visibles.</p>
             ) : (
               <>
-                {/* Card-based layout for mobile */}
                 <div className="block sm:hidden space-y-2">
                   {batch.files.map((file) => (
                     <BatchFileCard key={file.id} file={file} />
                   ))}
                 </div>
-                {/* Table layout for sm+ */}
                 <div className="hidden sm:block overflow-x-auto">
                   <Table
                     aria-label={`Archivos del lote ${batch.batch_id}`}
@@ -594,7 +566,6 @@ function MetricPill({ label, value }: { label: string; value: string }) {
 function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
   return (
     <>
-      {/* Card-based layout for mobile */}
       <div className="block sm:hidden space-y-2">
         {data.map((row) => {
           const pct = parseFloat(row.pct_sin_cambios) || 0
@@ -645,7 +616,6 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
         })}
       </div>
 
-      {/* Table layout for sm+ */}
       <div className="hidden sm:block overflow-x-auto">
         <Table
           aria-label="Estado por fuente"
@@ -720,7 +690,6 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
 function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
   return (
     <>
-      {/* Card-based layout for mobile */}
       <div className="block sm:hidden space-y-2">
         {data.map((exec) => (
           <Card key={exec.id} shadow="sm" className="border-none">
@@ -770,7 +739,6 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
         ))}
       </div>
 
-      {/* Table layout for sm+ */}
       <div className="hidden sm:block overflow-x-auto">
         <Table
           aria-label="Historial de ejecuciones"

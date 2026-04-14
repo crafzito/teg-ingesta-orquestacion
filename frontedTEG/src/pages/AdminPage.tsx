@@ -45,10 +45,6 @@ import { ROLE_LABELS, type UserRole } from '../types/auth'
 import type { AdminUser } from '../types/admin'
 import { useUiStore } from '../stores/uiStore'
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const token = localStorage.getItem('teg_auth_token')
@@ -82,10 +78,6 @@ function formatDateTime(value: string | null): string {
   }).format(parsed)
 }
 
-// ---------------------------------------------------------------------------
-// User form state
-// ---------------------------------------------------------------------------
-
 interface UserFormState {
   username: string
   password: string
@@ -95,22 +87,14 @@ interface UserFormState {
 
 const EMPTY_FORM: UserFormState = { username: '', password: '', full_name: '', role: 'analista' }
 
-// ---------------------------------------------------------------------------
-// Sidebar sections config (hidden: Sistema)
-// ---------------------------------------------------------------------------
-
+// Sistema section intentionally hidden from the sidebar toggles UI.
 const CONFIGURABLE_SECTIONS = ['Principal', 'Finanzas', 'Operaciones', 'Maestros']
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 export default function AdminPage() {
   const queryClient = useQueryClient()
   const overview = useAdminOverview()
   const refreshSchema = useRefreshSchemaCache()
 
-  // -- User CRUD mutations
   const createUser = useMutation({
     mutationFn: async (body: UserFormState) => {
       const res = await fetch(`${API_BASE}/admin/users`, {
@@ -157,7 +141,6 @@ export default function AdminPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] }),
   })
 
-  // -- Modal states
   const createModal = useDisclosure()
   const editModal = useDisclosure()
   const deleteModal = useDisclosure()
@@ -167,11 +150,9 @@ export default function AdminPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
   const [mutationError, setMutationError] = useState('')
 
-  // -- Sidebar sections from UI store (per-role)
   const sidebarSectionsByRole = useUiStore((s) => s.sidebarSectionsByRole)
   const toggleSection = useUiStore((s) => s.toggleSection)
 
-  // -- Handlers
   const openCreate = useCallback(() => {
     setForm(EMPTY_FORM)
     setMutationError('')
@@ -230,7 +211,6 @@ export default function AdminPage() {
     }
   }, [deleteTarget, deleteUser, deleteModal])
 
-  // -- Loading / Error
   if (overview.isLoading) return <LoadingSpinner />
 
   if (overview.isError || !overview.data) {
@@ -253,7 +233,6 @@ export default function AdminPage() {
         description="Gestion de usuarios, base de datos y configuracion del sistema"
       />
 
-      {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Usuarios activos" value={`${data.active_users}/${data.total_users}`} icon={<Users className="h-6 w-6" />} />
         <KpiCard title="Vistas protegidas" value={String(data.protected_public_views)} icon={<ShieldCheck className="h-6 w-6" />} />
@@ -261,11 +240,7 @@ export default function AdminPage() {
         <KpiCard title="Directorios monitoreados" value={String(data.monitored_directories.length)} icon={<Settings2 className="h-6 w-6" />} />
       </div>
 
-      {/* Tabs */}
       <Tabs aria-label="Secciones de administracion" color="primary" variant="underlined" classNames={{ tabList: 'gap-6' }}>
-        {/* ================================================================ */}
-        {/* TAB 1: Usuarios                                                  */}
-        {/* ================================================================ */}
         <Tab
           key="usuarios"
           title={
@@ -351,9 +326,6 @@ export default function AdminPage() {
           </div>
         </Tab>
 
-        {/* ================================================================ */}
-        {/* TAB 2: Configuracion                                             */}
-        {/* ================================================================ */}
         <Tab
           key="config"
           title={
@@ -364,7 +336,6 @@ export default function AdminPage() {
           }
         >
           <div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-2">
-            {/* Sidebar Sections per role */}
             <Card shadow="sm" className="xl:col-span-2">
               <CardBody className="gap-4 p-5">
                 <h2 className="text-lg font-semibold text-foreground">Secciones del Sidebar</h2>
@@ -389,7 +360,6 @@ export default function AdminPage() {
               </CardBody>
             </Card>
 
-            {/* System flags + Monitored directories */}
             <Card shadow="sm">
               <CardBody className="gap-4 p-5">
                 <h2 className="text-lg font-semibold text-foreground">Sistema</h2>
@@ -441,9 +411,6 @@ export default function AdminPage() {
         </Tab>
       </Tabs>
 
-      {/* ================================================================== */}
-      {/* MODAL: Crear usuario                                               */}
-      {/* ================================================================== */}
       <Modal
         isOpen={createModal.isOpen}
         onOpenChange={createModal.onOpenChange}
@@ -516,9 +483,6 @@ export default function AdminPage() {
         </ModalContent>
       </Modal>
 
-      {/* ================================================================== */}
-      {/* MODAL: Editar usuario                                              */}
-      {/* ================================================================== */}
       <Modal
         isOpen={editModal.isOpen}
         onOpenChange={editModal.onOpenChange}
@@ -589,9 +553,6 @@ export default function AdminPage() {
         </ModalContent>
       </Modal>
 
-      {/* ================================================================== */}
-      {/* MODAL: Confirmar eliminacion                                       */}
-      {/* ================================================================== */}
       <Modal
         isOpen={deleteModal.isOpen}
         onOpenChange={deleteModal.onOpenChange}

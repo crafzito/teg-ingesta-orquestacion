@@ -11,7 +11,6 @@ export function AppLayout() {
   const setSidebarSectionsByRole = useUiStore((s) => s.setSidebarSectionsByRole)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
-  // Hydrate sidebar section config from backend when authenticated
   useEffect(() => {
     if (!isAuthenticated) return
     const token = localStorage.getItem('teg_auth_token')
@@ -25,9 +24,7 @@ export function AppLayout() {
         return res.json() as Promise<Record<string, Record<string, boolean>>>
       })
       .then((data) => setSidebarSectionsByRole(data))
-      .catch(() => {
-        // Fallback: keep defaults already in the store
-      })
+      .catch(() => {})
   }, [isAuthenticated, setSidebarSectionsByRole])
 
   useEffect(() => {
@@ -36,26 +33,15 @@ export function AppLayout() {
     const handleChange = (e: MediaQueryListEvent | MediaQueryList) => {
       const isDesktop = e.matches
       setIsMobile(!isDesktop)
-
-      if (isDesktop) {
-        // Switching to desktop: expand sidebar by default
-        setSidebarOpen(true)
-      } else {
-        // Switching to mobile: hide sidebar by default
-        setSidebarOpen(false)
-      }
+      setSidebarOpen(isDesktop)
     }
 
-    // Set initial state
     handleChange(mediaQuery)
 
-    // Listen for changes
     mediaQuery.addEventListener('change', handleChange)
     return () => mediaQuery.removeEventListener('change', handleChange)
   }, [setIsMobile, setSidebarOpen])
 
-  // On mobile: no left margin (sidebar overlays)
-  // On desktop: margin matches sidebar width
   const mainMargin = isMobile ? 'ml-0' : (sidebarOpen ? 'ml-64' : 'ml-16')
 
   return (

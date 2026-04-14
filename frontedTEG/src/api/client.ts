@@ -37,7 +37,6 @@ class ApiClient {
 
 export const apiClient = new ApiClient()
 
-/** Convert QueryResponse rows to typed objects */
 export function rowsToObjects<T>(columns: string[], rows: (string | number | null)[][]): T[] {
   return rows.map((row) => {
     const obj: Record<string, unknown> = {}

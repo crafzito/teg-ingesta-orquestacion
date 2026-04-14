@@ -47,7 +47,6 @@ export function useEtlRun() {
   return useMutation({
     mutationFn: (body?: EtlRunRequest) => postEtlRun(body),
     onSuccess: () => {
-      // Invalidate to trigger immediate refetch
       queryClient.invalidateQueries({ queryKey: ETL_MONITOR_KEY })
     },
   })

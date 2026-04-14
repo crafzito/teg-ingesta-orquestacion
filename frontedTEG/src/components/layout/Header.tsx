@@ -48,7 +48,6 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Desktop: name + subtitle stacked */}
         <div className="hidden lg:flex flex-col items-end leading-tight">
           <span className="text-sm font-medium text-default-700">
             {user?.fullName ?? 'Usuario'}
@@ -70,7 +69,6 @@ export function Header() {
           }}
         />
 
-        {/* Tablet: role chip only | Desktop: role chip */}
         {user?.role && (
           <Chip size="sm" variant="flat" color={roleMeta?.chipColor ?? 'default'} className="hidden sm:flex">
             {ROLE_LABELS[user.role]}

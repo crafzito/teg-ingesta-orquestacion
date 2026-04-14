@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
-// ETL Monitor types — mirrors backend GET /api/etl/monitor response
-// ---------------------------------------------------------------------------
+// Mirrors backend GET /api/etl/monitor response.
 
 export interface EtlBatchFileItem {
   id: number

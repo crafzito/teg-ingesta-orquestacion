@@ -66,8 +66,6 @@ LOOKER_VIEW_LABELS: dict[str, str] = {
 DEFAULT_SCHEMAS = ["cat", "dim", "fact", "raw", "etl"]
 ETL_MONITOR_DIRS = [
     PROJECT_ROOT / "data" / "input",
-    PROJECT_ROOT / "data" / "Div Consumo",
-    PROJECT_ROOT / "data" / "Div Empaque",
 ]
 
 

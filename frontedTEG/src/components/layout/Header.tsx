@@ -48,6 +48,18 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Desktop: name + subtitle stacked */}
+        <div className="hidden lg:flex flex-col items-end leading-tight">
+          <span className="text-sm font-medium text-default-700">
+            {user?.fullName ?? 'Usuario'}
+          </span>
+          {roleMeta && (
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-default-400">
+              {roleMeta.subtitle}
+            </span>
+          )}
+        </div>
+
         <Avatar
           name={user?.fullName?.[0] ?? 'U'}
           size="sm"
@@ -57,19 +69,14 @@ export function Header() {
             name: 'text-white',
           }}
         />
-        <div className="hidden sm:flex flex-col items-end leading-tight">
-          <span className="text-sm text-default-700">{user?.fullName ?? 'Usuario'}</span>
-          {user?.role && (
-            <Chip size="sm" variant="flat" color={roleMeta?.chipColor ?? 'default'} className="mt-1">
-              {ROLE_LABELS[user.role]}
-            </Chip>
-          )}
-          {roleMeta && (
-            <span className="mt-1 text-xs font-medium uppercase tracking-wide text-default-400">
-              {roleMeta.subtitle}
-            </span>
-          )}
-        </div>
+
+        {/* Tablet: role chip only | Desktop: role chip */}
+        {user?.role && (
+          <Chip size="sm" variant="flat" color={roleMeta?.chipColor ?? 'default'} className="hidden sm:flex">
+            {ROLE_LABELS[user.role]}
+          </Chip>
+        )}
+
         <Button
           isIconOnly
           size="sm"

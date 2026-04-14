@@ -18,3 +18,19 @@ CREATE TABLE IF NOT EXISTS auth.users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON auth.users(username) WHERE active;
+
+-- ============================================================
+-- Sidebar configuration per role (JSONB)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS auth.sidebar_config (
+  role TEXT PRIMARY KEY,
+  sections JSONB NOT NULL DEFAULT '{}'
+);
+
+-- Seed defaults (all sections enabled for all roles)
+INSERT INTO auth.sidebar_config (role, sections) VALUES
+  ('superadmin', '{"Principal": true, "Finanzas": true, "Operaciones": true, "Maestros": true}'),
+  ('admin', '{"Principal": true, "Finanzas": true, "Operaciones": true, "Maestros": true}'),
+  ('analista', '{"Principal": true, "Finanzas": true, "Operaciones": true, "Maestros": true}')
+ON CONFLICT (role) DO NOTHING;

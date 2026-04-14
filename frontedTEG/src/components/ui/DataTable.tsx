@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback } from 'react'
 import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
-  Pagination, Input, Spinner, Chip,
+  Pagination, Input, Spinner, Chip, Select, SelectItem, Card, CardBody,
 } from '@heroui/react'
-import { Search } from 'lucide-react'
+import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 
 interface Column<T> {
   key: keyof T
@@ -72,13 +72,13 @@ export function DataTable<T extends object>({
   }, [columns])
 
   const topContent = (
-    <div className="flex items-center justify-between gap-4 px-1">
+    <div className="flex flex-col gap-3 px-1 md:flex-row md:items-center md:justify-between">
       {title && <h3 className="text-lg font-semibold text-foreground">{title}</h3>}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         {searchable && (
           <Input
             isClearable
-            className="w-64"
+            className="w-full sm:w-64"
             placeholder="Buscar..."
             size="sm"
             variant="bordered"
@@ -88,10 +88,54 @@ export function DataTable<T extends object>({
             onValueChange={(v) => { setSearch(v); setPage(1) }}
           />
         )}
-        <Chip size="sm" variant="flat" color="default">
+        <Chip size="sm" variant="flat" color="default" className="self-start sm:self-auto">
           {sorted.length} registros
         </Chip>
       </div>
+    </div>
+  )
+
+  const sortableColumns = columns.filter((c) => c.sortable !== false)
+
+  const mobileSort = (
+    <div className="flex items-center gap-2 px-1 md:hidden">
+      <Select
+        aria-label="Ordenar por"
+        size="sm"
+        variant="bordered"
+        className="w-full"
+        placeholder="Ordenar por..."
+        selectedKeys={sortDescriptor.column ? [sortDescriptor.column] : []}
+        onSelectionChange={(keys) => {
+          const key = Array.from(keys)[0] as string | undefined
+          setSortDescriptor({
+            column: key ?? '',
+            direction: sortDescriptor.direction,
+          })
+          setPage(1)
+        }}
+      >
+        {sortableColumns.map((col) => (
+          <SelectItem key={String(col.key)}>{col.label}</SelectItem>
+        ))}
+      </Select>
+      <button
+        type="button"
+        aria-label="Cambiar direccion de orden"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-medium border border-default-200 bg-content1 text-default-600 transition hover:bg-default-100"
+        onClick={() => setSortDescriptor((s) => ({
+          ...s,
+          direction: s.direction === 'ascending' ? 'descending' : 'ascending',
+        }))}
+      >
+        {sortDescriptor.column === '' ? (
+          <ArrowUpDown className="h-4 w-4" />
+        ) : sortDescriptor.direction === 'ascending' ? (
+          <ArrowUp className="h-4 w-4" />
+        ) : (
+          <ArrowDown className="h-4 w-4" />
+        )}
+      </button>
     </div>
   )
 
@@ -108,42 +152,104 @@ export function DataTable<T extends object>({
     </div>
   ) : null
 
+  const primaryKey = columns[0]?.key
+  const mobileCards = (
+    <div className="flex flex-col gap-3 md:hidden">
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <Spinner color="primary" />
+        </div>
+      ) : paged.length === 0 ? (
+        <Card shadow="sm">
+          <CardBody className="py-8 text-center text-small text-default-500">
+            Sin datos
+          </CardBody>
+        </Card>
+      ) : (
+        paged.map((item, i) => {
+          const record = item as Record<string, unknown>
+          const primaryValue = primaryKey ? String(record[String(primaryKey)] ?? '-') : ''
+          return (
+            <Card
+              key={`mobile-${i}`}
+              shadow="sm"
+              className="border border-default-100"
+            >
+              <CardBody className="gap-2 p-4">
+                {primaryKey && (
+                  <div className="flex items-center justify-between border-b border-default-100 pb-2">
+                    <span className="text-tiny uppercase tracking-wide text-default-500">
+                      {columns[0].label}
+                    </span>
+                    <span className="text-small font-semibold text-foreground">
+                      {columns[0].render
+                        ? columns[0].render(item[columns[0].key], item)
+                        : primaryValue}
+                    </span>
+                  </div>
+                )}
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-small">
+                  {columns.slice(1).map((col) => (
+                    <div key={String(col.key)} className="contents">
+                      <dt className="text-tiny uppercase tracking-wide text-default-500">
+                        {col.label}
+                      </dt>
+                      <dd className="text-right text-small text-foreground break-words">
+                        {col.render
+                          ? col.render(item[col.key], item)
+                          : String(item[col.key] ?? '-')}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </CardBody>
+            </Card>
+          )
+        })
+      )}
+    </div>
+  )
+
   return (
-    <Table
-      aria-label={title ?? 'Data table'}
-      isHeaderSticky
-      isStriped
-      sortDescriptor={sortDescriptor}
-      onSortChange={(d) => setSortDescriptor(d as { column: string; direction: 'ascending' | 'descending' })}
-      topContent={topContent}
-      topContentPlacement="outside"
-      bottomContent={bottomContent}
-      bottomContentPlacement="outside"
-      classNames={{
-        wrapper: 'shadow-sm',
-      }}
-    >
-      <TableHeader columns={columns.map((c) => ({ key: String(c.key), label: c.label, sortable: c.sortable !== false }))}>
-        {(column) => (
-          <TableColumn key={column.key} allowsSorting={column.sortable}>
-            {column.label}
-          </TableColumn>
-        )}
-      </TableHeader>
-      <TableBody
-        items={paged.map((item, i) => ({ row: item, _key: String(i) }))}
-        isLoading={isLoading}
-        loadingContent={<Spinner color="primary" />}
-        emptyContent="Sin datos"
-      >
-        {(item) => (
-          <TableRow key={item._key as string}>
-            {(columnKey) => (
-              <TableCell>{renderCell(item.row as T, String(columnKey))}</TableCell>
+    <div className="flex flex-col gap-3">
+      {topContent}
+      {mobileSort}
+      {mobileCards}
+      <div className="hidden md:block">
+        <Table
+          aria-label={title ?? 'Data table'}
+          isHeaderSticky
+          isStriped
+          sortDescriptor={sortDescriptor}
+          onSortChange={(d) => setSortDescriptor(d as { column: string; direction: 'ascending' | 'descending' })}
+          classNames={{
+            wrapper: 'shadow-sm',
+          }}
+        >
+          <TableHeader columns={columns.map((c) => ({ key: String(c.key), label: c.label, sortable: c.sortable !== false }))}>
+            {(column) => (
+              <TableColumn key={column.key} allowsSorting={column.sortable}>
+                {column.label}
+              </TableColumn>
             )}
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+          </TableHeader>
+          <TableBody
+            items={paged.map((item, i) => ({ row: item, _key: String(i) }))}
+            isLoading={isLoading}
+            loadingContent={<Spinner color="primary" />}
+            emptyContent="Sin datos"
+          >
+            {(item) => (
+              <TableRow key={item._key as string}>
+                {(columnKey) => (
+                  <TableCell>{renderCell(item.row as T, String(columnKey))}</TableCell>
+                )}
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      {bottomContent}
+    </div>
   )
 }

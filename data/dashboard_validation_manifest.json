@@ -1,7 +1,0 @@
-{
-  "baseline": "data/dashboard_baseline_v1",
-  "delta": "data/dashboard_delta_v2",
-  "generated_with": "python scripts/build_validation_datasets.py --output-root data/generated/followup_startup_validation --mutation-tag 20260412",
-  "mutation_tag": "20260412",
-  "notes": "baseline = copia reproducible de data/input; delta = misma base con cambios/incrementos determinísticos para mover KPIs y dashboards"
-}

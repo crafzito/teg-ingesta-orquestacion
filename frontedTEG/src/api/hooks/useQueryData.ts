@@ -10,6 +10,7 @@ export function useQueryData<T>(key: string[], sql: string, limit?: number) {
       return rowsToObjects<T>(res.columns, res.rows)
     },
     staleTime: STALE_TIME,
+    refetchOnMount: 'always',
     enabled: !!sql,
   })
 }
@@ -25,6 +26,7 @@ export function useScalarQuery(key: string[], sql: string) {
       return 0
     },
     staleTime: STALE_TIME,
+    refetchOnMount: 'always',
     enabled: !!sql,
   })
 }

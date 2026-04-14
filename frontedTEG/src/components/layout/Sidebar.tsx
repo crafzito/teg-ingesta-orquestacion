@@ -75,7 +75,11 @@ export function Sidebar() {
     : ''
   const showLabels = isMobile || sidebarOpen
 
+  const sidebarSectionsByRole = useUiStore((s) => s.sidebarSectionsByRole)
+  const roleSections = role ? sidebarSectionsByRole[role] : undefined
+
   const visibleGroups = NAV_GROUPS
+    .filter((group) => group.label === 'Sistema' || roleSections?.[group.label] !== false)
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => !item.allowedRoles || (!!role && item.allowedRoles.includes(role))),
@@ -119,7 +123,7 @@ export function Sidebar() {
           </Button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-4 px-2">
+        <nav className="sidebar-nav flex-1 overflow-y-auto py-4 px-2">
           {visibleGroups.map((group) => (
             <div key={group.label} className="mb-4">
               {showLabels && (

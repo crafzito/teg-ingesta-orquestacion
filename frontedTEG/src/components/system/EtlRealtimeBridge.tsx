@@ -21,9 +21,14 @@ const REFRESHABLE_PREFIXES = new Set([
 ])
 
 function buildWsUrl(token: string): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const base = `${protocol}://${window.location.host}${API_BASE}/etl/ws/monitor`
-  return `${base}?access_token=${encodeURIComponent(token)}`
+  let base: string
+  if (API_BASE.startsWith('http')) {
+    base = API_BASE.replace(/^http/, 'ws')
+  } else {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    base = `${protocol}://${window.location.host}${API_BASE}`
+  }
+  return `${base}/etl/ws/monitor?access_token=${encodeURIComponent(token)}`
 }
 
 function shouldInvalidate(previous: EtlMonitorResponse | undefined, next: EtlMonitorResponse): boolean {

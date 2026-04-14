@@ -273,3 +273,63 @@ class AdminOverviewResponse(BaseModel):
     users: list[AdminUserItem]
     protected_actions: list[AdminProtectedAction]
     role_matrix: list[AdminRoleCapability]
+
+
+# ── DB Tables Info ──────────────────────────────────────────────────
+
+
+class DbTableInfo(BaseModel):
+    schema: str
+    table_name: str
+    row_count: int
+    total_size_bytes: int
+    total_size_pretty: str
+
+
+class DbTablesSummary(BaseModel):
+    total_tables: int
+    total_size_pretty: str
+
+
+class DbTablesResponse(BaseModel):
+    tables: list[DbTableInfo]
+    summary: DbTablesSummary
+
+
+# ── User CRUD ───────────────────────────────────────────────────────
+
+
+class CreateUserRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=4, max_length=200)
+    full_name: str = Field(..., min_length=1, max_length=200)
+    role: str = Field(..., min_length=1, max_length=20)
+
+
+class UpdateUserRequest(BaseModel):
+    full_name: str | None = None
+    role: str | None = None
+    password: str | None = None
+
+
+class UserDetail(BaseModel):
+    id: int
+    username: str
+    full_name: str | None
+    role: str
+    active: bool
+    last_login: datetime.datetime | None
+    created_at: datetime.datetime | None
+
+
+# ── Sidebar Config ─────────────────────────────────────────────────
+
+
+class SidebarConfigUpdate(BaseModel):
+    role: str = Field(..., min_length=1, max_length=20)
+    sections: dict[str, bool]
+
+
+class SidebarConfigItem(BaseModel):
+    role: str
+    sections: dict[str, bool]

@@ -269,6 +269,11 @@ Flujo:
         action="store_true",
         help="No cargar raw histórico al ejecutar pipeline",
     )
+    parser.add_argument(
+        "--run-now",
+        action="store_true",
+        help="Ejecutar pipeline inmediatamente al iniciar y luego monitorear",
+    )
     args = parser.parse_args()
 
     data_dir = os.path.abspath(args.dir)
@@ -294,6 +299,11 @@ Flujo:
         extensions=extensions,
         skip_raw=args.skip_raw,
     )
+
+    if args.run_now:
+        logger.info("--run-now: ejecutando pipeline inmediatamente...")
+        handler._changed_files = {"*.CSV"}
+        handler._trigger_pipeline()
 
     observer = Observer()
     observer.schedule(handler, data_dir, recursive=True)

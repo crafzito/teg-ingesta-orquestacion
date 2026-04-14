@@ -3,7 +3,6 @@
 Uso:
     python backend/seed_users.py
 
-Lee la conexion de DB del mismo .env que usa backend/main.py.
 Idempotente: ON CONFLICT (username) DO UPDATE.
 """
 
@@ -13,7 +12,6 @@ import os
 import sys
 from pathlib import Path
 
-# Aseguramos que el repo este en sys.path para poder importar backend.*
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))

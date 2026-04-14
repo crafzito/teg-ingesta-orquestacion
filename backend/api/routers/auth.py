@@ -1,5 +1,3 @@
-"""Endpoints publicos de autenticacion: login, me, logout."""
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status

@@ -275,9 +275,6 @@ class AdminOverviewResponse(BaseModel):
     role_matrix: list[AdminRoleCapability]
 
 
-# ── DB Tables Info ──────────────────────────────────────────────────
-
-
 class DbTableInfo(BaseModel):
     schema: str
     table_name: str
@@ -294,9 +291,6 @@ class DbTablesSummary(BaseModel):
 class DbTablesResponse(BaseModel):
     tables: list[DbTableInfo]
     summary: DbTablesSummary
-
-
-# ── User CRUD ───────────────────────────────────────────────────────
 
 
 class CreateUserRequest(BaseModel):
@@ -320,9 +314,6 @@ class UserDetail(BaseModel):
     active: bool
     last_login: datetime.datetime | None
     created_at: datetime.datetime | None
-
-
-# ── Sidebar Config ─────────────────────────────────────────────────
 
 
 class SidebarConfigUpdate(BaseModel):

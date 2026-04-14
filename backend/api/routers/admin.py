@@ -141,9 +141,6 @@ def get_admin_summary(current_user: UserOut = Depends(require_role(_SUPERADMIN_O
     )
 
 
-# ── DB Tables Info ──────────────────────────────────────────────────
-
-
 @router.get("/db-tables", response_model=DbTablesResponse)
 def get_db_tables(current_user: UserOut = Depends(require_role(_SUPERADMIN_ONLY))):
     with readonly_conn() as conn:
@@ -188,9 +185,6 @@ def get_db_tables(current_user: UserOut = Depends(require_role(_SUPERADMIN_ONLY)
             total_size_pretty=total_size_pretty,
         ),
     )
-
-
-# ── User CRUD ───────────────────────────────────────────────────────
 
 
 def _row_to_user_detail(row: tuple) -> UserDetail:
@@ -355,9 +349,6 @@ def delete_user(
         )
 
     return {"ok": True}
-
-
-# ── Sidebar Config ─────────────────────────────────────────────────
 
 
 @router.get("/sidebar-config", response_model=dict[str, dict[str, bool]])

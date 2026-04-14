@@ -1,4 +1,4 @@
-"""Autenticacion y autorizacion (JWT + roles) para el backend TEG."""
+"""Autenticacion y autorizacion (JWT + roles)."""
 
 from __future__ import annotations
 
@@ -13,10 +13,6 @@ from pydantic import BaseModel, Field
 
 from .api.core import write_conn
 
-# ---------------------------------------------------------------------------
-# Configuracion
-# ---------------------------------------------------------------------------
-
 JWT_SECRET = os.getenv(
     "JWT_SECRET",
     "dev-only-change-me-in-production-9f8a7b6c5d4e3f2a1b0c",
@@ -25,12 +21,9 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 8
 VALID_ROLES = ("superadmin", "admin", "analista")
 
+# bcrypt pineado a <5.0 por incompatibilidad con passlib (ver requirements)
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-# ---------------------------------------------------------------------------
-# Hashing
-# ---------------------------------------------------------------------------
 
 def hash_password(plain: str) -> str:
     return _pwd_context.hash(plain)
@@ -42,10 +35,6 @@ def verify_password(plain: str, hashed: str) -> bool:
     except Exception:
         return False
 
-
-# ---------------------------------------------------------------------------
-# JWT
-# ---------------------------------------------------------------------------
 
 def create_access_token(data: dict) -> str:
     to_encode = dict(data)
@@ -76,10 +65,6 @@ def extract_bearer_token(authorization: str | None) -> str:
     return parts[1]
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=50)
     password: str = Field(..., min_length=1, max_length=200)
@@ -97,10 +82,6 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     user: UserOut
 
-
-# ---------------------------------------------------------------------------
-# DB helpers
-# ---------------------------------------------------------------------------
 
 def fetch_user_by_username(username: str) -> dict | None:
     sql = """
@@ -152,10 +133,6 @@ def update_last_login(user_id: int) -> None:
         with conn.cursor() as cur:
             cur.execute(sql, (user_id,))
 
-
-# ---------------------------------------------------------------------------
-# Dependencias FastAPI
-# ---------------------------------------------------------------------------
 
 _UNAUTHORIZED = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,

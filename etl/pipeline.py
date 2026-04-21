@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 pipeline.py — Orquestador ETL SAP → PostgreSQL
 
@@ -8,7 +7,7 @@ Uso:
     python pipeline.py --dir /ruta/a/csvs/ --source PHXX
     python pipeline.py --dir /ruta/a/csvs/ --reset-hash PHXX
 
-Flujo de carga (orden obligatorio):
+Flujo de carga:
     1. cat.*          → catálogos (condicion_pago, ramo, zona, etc.)
     2. dim.vendedor   → maestro de vendedores y gerentes
     3. dim.producto   → maestro de materiales (consolida 4 fuentes)

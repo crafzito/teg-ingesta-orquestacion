@@ -1,10 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   Button,
   Card,
   CardBody,
   Chip,
-  Divider,
   Input,
   Modal,
   ModalBody,
@@ -25,25 +24,29 @@ import {
   useDisclosure,
 } from '@heroui/react'
 import {
+  Check,
   DatabaseZap,
+  KeyRound,
   Pencil,
   Plus,
-  RefreshCcw,
+  Power,
   Settings2,
   ShieldCheck,
-  Trash2,
   Users,
+  X,
 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 import { API_BASE } from '../config/env'
-import { useAdminOverview, useRefreshSchemaCache } from '../api/hooks/useAdminOverview'
+import { useAdminOverview } from '../api/hooks/useAdminOverview'
 import { PageHeader } from '../components/ui/PageHeader'
 import { KpiCard } from '../components/ui/KpiCard'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { ROLE_LABELS, type UserRole } from '../types/auth'
 import type { AdminUser } from '../types/admin'
 import { useUiStore } from '../stores/uiStore'
+import { PASSWORD_RULES, validatePassword } from '../utils/passwordValidation'
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -93,7 +96,6 @@ const CONFIGURABLE_SECTIONS = ['Principal', 'Finanzas', 'Operaciones', 'Maestros
 export default function AdminPage() {
   const queryClient = useQueryClient()
   const overview = useAdminOverview()
-  const refreshSchema = useRefreshSchemaCache()
 
   const createUser = useMutation({
     mutationFn: async (body: UserFormState) => {
@@ -127,31 +129,51 @@ export default function AdminPage() {
       })
       return readJson<AdminUser>(res)
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] }),
+    onSuccess: (user) => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] })
+      toast.success(user.active ? 'Usuario activado' : 'Usuario desactivado', {
+        description: user.username,
+      })
+    },
+    onError: (err) => {
+      toast.error('No se pudo cambiar el estado del usuario', {
+        description: (err as Error).message,
+      })
+    },
   })
 
-  const deleteUser = useMutation({
-    mutationFn: async (id: number) => {
+  const resetPassword = useMutation({
+    mutationFn: async ({ id, password }: { id: number; password: string }) => {
       const res = await fetch(`${API_BASE}/admin/users/${id}`, {
-        method: 'DELETE',
+        method: 'PUT',
         headers: authHeaders(),
+        body: JSON.stringify({ password }),
       })
-      return readJson<{ detail: string }>(res)
+      return readJson<AdminUser>(res)
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] }),
   })
 
   const createModal = useDisclosure()
   const editModal = useDisclosure()
-  const deleteModal = useDisclosure()
+  const toggleModal = useDisclosure()
+  const resetPwModal = useDisclosure()
 
   const [form, setForm] = useState<UserFormState>(EMPTY_FORM)
   const [editId, setEditId] = useState<number | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [toggleTarget, setToggleTarget] = useState<AdminUser | null>(null)
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
+  const [resetPw, setResetPw] = useState('')
+  const [resetPwConfirm, setResetPwConfirm] = useState('')
   const [mutationError, setMutationError] = useState('')
 
   const sidebarSectionsByRole = useUiStore((s) => s.sidebarSectionsByRole)
   const toggleSection = useUiStore((s) => s.toggleSection)
+
+  const createPwCheck = useMemo(() => validatePassword(form.password), [form.password])
+  const editPwCheck = useMemo(() => validatePassword(form.password), [form.password])
+  const resetPwCheck = useMemo(() => validatePassword(resetPw), [resetPw])
+  const resetMatches = resetPw.length > 0 && resetPw === resetPwConfirm
 
   const openCreate = useCallback(() => {
     setForm(EMPTY_FORM)
@@ -171,45 +193,79 @@ export default function AdminPage() {
     editModal.onOpen()
   }, [editModal])
 
-  const openDelete = useCallback((user: AdminUser) => {
-    setDeleteTarget(user)
+  const openToggle = useCallback((user: AdminUser) => {
+    setToggleTarget(user)
     setMutationError('')
-    deleteModal.onOpen()
-  }, [deleteModal])
+    toggleModal.onOpen()
+  }, [toggleModal])
+
+  const openResetPw = useCallback((user: AdminUser) => {
+    setResetTarget(user)
+    setResetPw('')
+    setResetPwConfirm('')
+    setMutationError('')
+    resetPwModal.onOpen()
+  }, [resetPwModal])
 
   const handleCreate = useCallback(async () => {
     setMutationError('')
     try {
-      await createUser.mutateAsync(form)
+      const created = await createUser.mutateAsync(form)
+      toast.success('Usuario creado', {
+        description: `${created.username} fue agregado como ${ROLE_LABELS[created.role]}`,
+      })
       createModal.onClose()
     } catch (err) {
-      setMutationError((err as Error).message)
+      const msg = (err as Error).message
+      setMutationError(msg)
+      toast.error('No se pudo crear el usuario', { description: msg })
     }
   }, [form, createUser, createModal])
 
   const handleUpdate = useCallback(async () => {
     if (editId == null) return
     setMutationError('')
-    const payload: Record<string, unknown> = { id: editId, full_name: form.full_name, role: form.role }
+    const payload: { id: number; full_name?: string; role?: UserRole; password?: string } = {
+      id: editId,
+      full_name: form.full_name,
+      role: form.role,
+    }
     if (form.password) payload.password = form.password
     try {
-      await updateUser.mutateAsync(payload as { id: number; full_name?: string; role?: UserRole; password?: string })
+      await updateUser.mutateAsync(payload)
+      toast.success('Usuario actualizado', { description: form.username })
       editModal.onClose()
     } catch (err) {
-      setMutationError((err as Error).message)
+      const msg = (err as Error).message
+      setMutationError(msg)
+      toast.error('No se pudo actualizar', { description: msg })
     }
   }, [editId, form, updateUser, editModal])
 
-  const handleDelete = useCallback(async () => {
-    if (!deleteTarget) return
+  const handleToggle = useCallback(async () => {
+    if (!toggleTarget) return
     setMutationError('')
     try {
-      await deleteUser.mutateAsync(deleteTarget.id)
-      deleteModal.onClose()
+      await toggleUser.mutateAsync(toggleTarget.id)
+      toggleModal.onClose()
     } catch (err) {
       setMutationError((err as Error).message)
     }
-  }, [deleteTarget, deleteUser, deleteModal])
+  }, [toggleTarget, toggleUser, toggleModal])
+
+  const handleResetPassword = useCallback(async () => {
+    if (!resetTarget) return
+    setMutationError('')
+    try {
+      await resetPassword.mutateAsync({ id: resetTarget.id, password: resetPw })
+      toast.success('Contrasena restablecida', { description: resetTarget.username })
+      resetPwModal.onClose()
+    } catch (err) {
+      const msg = (err as Error).message
+      setMutationError(msg)
+      toast.error('No se pudo restablecer la contrasena', { description: msg })
+    }
+  }, [resetTarget, resetPw, resetPassword, resetPwModal])
 
   if (overview.isLoading) return <LoadingSpinner />
 
@@ -285,17 +341,17 @@ export default function AdminPage() {
                           </Chip>
                         </TableCell>
                         <TableCell>
-                          <Switch
+                          <Chip
                             size="sm"
-                            isSelected={user.active}
-                            isDisabled={toggleUser.isPending}
-                            onValueChange={() => toggleUser.mutate(user.id)}
-                            aria-label={user.active ? 'Desactivar usuario' : 'Activar usuario'}
-                          />
+                            variant="flat"
+                            color={user.active ? 'success' : 'default'}
+                          >
+                            {user.active ? 'Activo' : 'Inactivo'}
+                          </Chip>
                         </TableCell>
                         <TableCell className="text-sm text-default-500">{formatDateTime(user.last_login)}</TableCell>
                         <TableCell>
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-1">
                             <Button
                               isIconOnly
                               size="sm"
@@ -309,11 +365,20 @@ export default function AdminPage() {
                               isIconOnly
                               size="sm"
                               variant="light"
-                              color="danger"
-                              onPress={() => openDelete(user)}
-                              aria-label="Eliminar usuario"
+                              onPress={() => openResetPw(user)}
+                              aria-label="Restablecer contrasena"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <KeyRound className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color={user.active ? 'danger' : 'success'}
+                              onPress={() => openToggle(user)}
+                              aria-label={user.active ? 'Desactivar usuario' : 'Activar usuario'}
+                            >
+                              <Power className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -360,53 +425,7 @@ export default function AdminPage() {
               </CardBody>
             </Card>
 
-            <Card shadow="sm">
-              <CardBody className="gap-4 p-5">
-                <h2 className="text-lg font-semibold text-foreground">Sistema</h2>
-                <div className="space-y-3">
-                  {Object.entries(data.system_flags).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between rounded-xl border border-default-200 bg-default-50/70 px-4 py-3">
-                      <span className="text-sm text-default-500">{key}</span>
-                      <span className="text-sm font-medium">{value}</span>
-                    </div>
-                  ))}
-                  <Divider />
-                  <h3 className="text-sm font-semibold text-default-500">Rutas monitoreadas</h3>
-                  {data.monitored_directories.map((directory) => (
-                    <div key={directory} className="rounded-xl border border-default-200 bg-default-50/70 px-4 py-3 text-sm text-default-700">
-                      {directory}
-                    </div>
-                  ))}
-                  <Divider />
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Cache de esquema</p>
-                      <p className="text-xs text-default-400">Refresca las vistas y tablas cacheadas</p>
-                    </div>
-                    <Button
-                      color="secondary"
-                      variant="flat"
-                      size="sm"
-                      startContent={<RefreshCcw className={`h-4 w-4 ${refreshSchema.isPending ? 'animate-spin' : ''}`} />}
-                      isLoading={refreshSchema.isPending}
-                      onPress={() => refreshSchema.mutate()}
-                    >
-                      Refrescar
-                    </Button>
-                  </div>
-                  {refreshSchema.isSuccess && (
-                    <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
-                      Cache de esquema refrescada correctamente.
-                    </div>
-                  )}
-                  {refreshSchema.isError && (
-                    <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger">
-                      Error: {(refreshSchema.error as Error)?.message ?? 'Desconocido'}
-                    </div>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
+          
           </div>
         </Tab>
       </Tabs>
@@ -444,6 +463,7 @@ export default function AdminPage() {
                   variant="bordered"
                   isRequired
                 />
+                <PasswordRulesList pw={form.password} />
                 <Input
                   label="Nombre completo"
                   placeholder="Juan Perez"
@@ -473,6 +493,7 @@ export default function AdminPage() {
                   color="primary"
                   className="w-full sm:w-auto"
                   isLoading={createUser.isPending}
+                  isDisabled={!createPwCheck.valid || !form.username.trim()}
                   onPress={handleCreate}
                 >
                   Crear
@@ -534,6 +555,7 @@ export default function AdminPage() {
                   onValueChange={(v) => setForm((p) => ({ ...p, password: v }))}
                   variant="bordered"
                 />
+                {form.password.length > 0 && <PasswordRulesList pw={form.password} />}
               </ModalBody>
               <ModalFooter className="flex flex-col-reverse sm:flex-row gap-2">
                 <Button variant="flat" className="w-full sm:w-auto" onPress={onClose}>
@@ -543,6 +565,7 @@ export default function AdminPage() {
                   color="primary"
                   className="w-full sm:w-auto"
                   isLoading={updateUser.isPending}
+                  isDisabled={form.password.length > 0 && !editPwCheck.valid}
                   onPress={handleUpdate}
                 >
                   Guardar
@@ -554,15 +577,62 @@ export default function AdminPage() {
       </Modal>
 
       <Modal
-        isOpen={deleteModal.isOpen}
-        onOpenChange={deleteModal.onOpenChange}
+        isOpen={toggleModal.isOpen}
+        onOpenChange={toggleModal.onOpenChange}
         size="sm"
+        classNames={{ base: 'mx-2 sm:mx-auto' }}
+      >
+        <ModalContent>
+          {(onClose) => {
+            const isActive = toggleTarget?.active ?? false
+            return (
+              <>
+                <ModalHeader className="text-base sm:text-lg">
+                  {isActive ? 'Desactivar usuario' : 'Activar usuario'}
+                </ModalHeader>
+                <ModalBody>
+                  {mutationError && (
+                    <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger">
+                      {mutationError}
+                    </div>
+                  )}
+                  <p className="text-sm text-default-600">
+                    {isActive ? (
+                      <>Se desactivara al usuario <strong>{toggleTarget?.username}</strong>. No podra iniciar sesion hasta que sea reactivado.</>
+                    ) : (
+                      <>Se activara al usuario <strong>{toggleTarget?.username}</strong>. Podra iniciar sesion nuevamente.</>
+                    )}
+                  </p>
+                </ModalBody>
+                <ModalFooter className="flex flex-col-reverse sm:flex-row gap-2">
+                  <Button variant="flat" className="w-full sm:w-auto" onPress={onClose}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    color={isActive ? 'danger' : 'success'}
+                    className="w-full sm:w-auto"
+                    isLoading={toggleUser.isPending}
+                    onPress={handleToggle}
+                  >
+                    {isActive ? 'Desactivar' : 'Activar'}
+                  </Button>
+                </ModalFooter>
+              </>
+            )
+          }}
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={resetPwModal.isOpen}
+        onOpenChange={resetPwModal.onOpenChange}
+        size="md"
         classNames={{ base: 'mx-2 sm:mx-auto' }}
       >
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader className="text-base sm:text-lg">Eliminar Usuario</ModalHeader>
+              <ModalHeader className="text-base sm:text-lg">Restablecer contrasena</ModalHeader>
               <ModalBody>
                 {mutationError && (
                   <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger">
@@ -570,20 +640,46 @@ export default function AdminPage() {
                   </div>
                 )}
                 <p className="text-sm text-default-600">
-                  Se eliminara permanentemente al usuario <strong>{deleteTarget?.username}</strong>. Esta accion no se puede deshacer.
+                  Se actualizara la contrasena del usuario <strong>{resetTarget?.username}</strong>.
                 </p>
+                <Input
+                  label="Nueva contrasena"
+                  placeholder="••••••••"
+                  type="password"
+                  value={resetPw}
+                  onValueChange={setResetPw}
+                  variant="bordered"
+                  isRequired
+                />
+                <PasswordRulesList pw={resetPw} />
+                <Input
+                  label="Confirmar contrasena"
+                  placeholder="••••••••"
+                  type="password"
+                  value={resetPwConfirm}
+                  onValueChange={setResetPwConfirm}
+                  variant="bordered"
+                  isRequired
+                  isInvalid={resetPwConfirm.length > 0 && !resetMatches}
+                  errorMessage={
+                    resetPwConfirm.length > 0 && !resetMatches
+                      ? 'Las contrasenas no coinciden'
+                      : undefined
+                  }
+                />
               </ModalBody>
               <ModalFooter className="flex flex-col-reverse sm:flex-row gap-2">
                 <Button variant="flat" className="w-full sm:w-auto" onPress={onClose}>
                   Cancelar
                 </Button>
                 <Button
-                  color="danger"
+                  color="primary"
                   className="w-full sm:w-auto"
-                  isLoading={deleteUser.isPending}
-                  onPress={handleDelete}
+                  isLoading={resetPassword.isPending}
+                  isDisabled={!resetPwCheck.valid || !resetMatches}
+                  onPress={handleResetPassword}
                 >
-                  Eliminar
+                  Restablecer
                 </Button>
               </ModalFooter>
             </>
@@ -591,5 +687,24 @@ export default function AdminPage() {
         </ModalContent>
       </Modal>
     </div>
+  )
+}
+
+function PasswordRulesList({ pw }: { pw: string }) {
+  return (
+    <ul className="space-y-1 rounded-lg bg-default-50 px-3 py-2 text-xs">
+      {PASSWORD_RULES.map((rule) => {
+        const ok = rule.test(pw)
+        return (
+          <li
+            key={rule.key}
+            className={`flex items-center gap-2 ${ok ? 'text-success-600' : 'text-default-500'}`}
+          >
+            {ok ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+            <span>{rule.label}</span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { HeroUIProvider } from '@heroui/react'
+import { Toaster } from 'sonner'
 
 import { EtlRealtimeBridge } from './components/system/EtlRealtimeBridge'
 import { AppRouter } from './router'
@@ -28,6 +29,7 @@ function Bootstrapper() {
 export default function App() {
   return (
     <HeroUIProvider>
+      <Toaster position="top-right" richColors closeButton />
       <QueryClientProvider client={queryClient}>
         <Bootstrapper />
         <EtlRealtimeBridge />

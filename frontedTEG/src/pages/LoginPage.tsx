@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button, Card, CardBody, CardHeader, Input } from '@heroui/react'
-import { Eye, EyeOff, LogIn } from 'lucide-react'
+import { BookOpen, Eye, EyeOff, LogIn } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { useAuthStore } from '../stores/authStore'
 
@@ -28,15 +29,31 @@ export default function LoginPage() {
     setError('')
     try {
       await login({ username, password })
+      const loggedUser = useAuthStore.getState().user
+      const greetName = loggedUser?.fullName || loggedUser?.username || username
+      toast.success(`Bienvenido, ${greetName}`, { duration: 2000 })
       navigate(nextPath, { replace: true })
     } catch (err) {
-      setError((err as Error)?.message ?? 'Credenciales incorrectas')
+      const typedErr = err as Error & { status?: number }
+      const backendDetail = typedErr?.message
+      let description: string
+      if (typedErr?.status === 401) {
+        description = 'Usuario o contraseña incorrectos'
+      } else if (err instanceof TypeError) {
+        description = 'No se pudo conectar con el servidor'
+      } else if (backendDetail && !backendDetail.startsWith('HTTP ')) {
+        description = backendDetail
+      } else {
+        description = 'Intentá nuevamente en unos segundos'
+      }
+      toast.error('No se pudo iniciar sesión', { description })
+      setError(backendDetail ?? 'Credenciales incorrectas')
     }
   }
 
   return (
-    <div className="w-full max-w-md">
-      <Card shadow="lg" className="p-2">
+    <div className="w-full max-w-md flex flex-col items-center">
+      <Card shadow="lg" className="p-2 w-full">
         <CardHeader className="flex-col items-center pt-6 pb-0">
           <img src="/img/logo_380.png" alt="Proyectos PET" className="mb-3 h-20 w-auto" />
           <h1 className="text-2xl font-bold" style={{ color: '#091B6B' }}>Proyectos PET</h1>
@@ -95,6 +112,13 @@ export default function LoginPage() {
           </div>
         </CardBody>
       </Card>
+      <Link
+        to="/manual"
+        className="mt-4 inline-flex items-center gap-1.5 text-xs text-default-500 hover:text-default-700 transition-colors"
+      >
+        <BookOpen className="h-3.5 w-3.5" />
+        ¿Necesitas ayuda? Consulta el manual de usuario
+      </Link>
     </div>
   )
 }

@@ -52,7 +52,9 @@ function buildHeaders(token?: string): Record<string, string> {
 
 async function readJsonError(res: Response): Promise<Error> {
   const err = await res.json().catch(() => ({ detail: res.statusText }))
-  return new Error(err.detail || `HTTP ${res.status}`)
+  const error = new Error(err.detail || `HTTP ${res.status}`) as Error & { status?: number }
+  error.status = res.status
+  return error
 }
 
 export async function loginRequest(credentials: LoginCredentials): Promise<{ token: string; user: User }> {

@@ -295,7 +295,7 @@ class DbTablesResponse(BaseModel):
 
 class CreateUserRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=50)
-    password: str = Field(..., min_length=4, max_length=200)
+    password: str = Field(..., min_length=8, max_length=200)
     full_name: str = Field(..., min_length=1, max_length=200)
     role: str = Field(..., min_length=1, max_length=20)
 

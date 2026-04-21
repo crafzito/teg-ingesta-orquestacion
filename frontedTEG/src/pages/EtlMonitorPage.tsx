@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   Card, CardBody, Tabs, Tab, Chip, Button, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, parseISO, format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { toast } from 'sonner'
 
 import { PageHeader } from '../components/ui/PageHeader'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
@@ -116,6 +117,43 @@ export default function EtlMonitorPage() {
       window.clearInterval(intervalId)
     }
   }, [refetch])
+
+  const notifiedBatchRef = useRef<string | null>(null)
+  const seenFirstRef = useRef<boolean>(false)
+  useEffect(() => {
+    const currentBatchId = summary?.last_batch_id ?? null
+    const currentStatus = summary?.last_batch_status ?? null
+
+    if (!currentBatchId || !currentStatus) return
+
+    if (!seenFirstRef.current) {
+      seenFirstRef.current = true
+      if (currentStatus === 'SUCCESS' || currentStatus === 'PARTIAL_FAILED' || currentStatus === 'FAILED') {
+        notifiedBatchRef.current = currentBatchId
+      }
+      return
+    }
+
+    const isTerminal = currentStatus === 'SUCCESS' || currentStatus === 'PARTIAL_FAILED' || currentStatus === 'FAILED'
+    if (!isTerminal) return
+    if (notifiedBatchRef.current === currentBatchId) return
+
+    const shortId = currentBatchId.length > 12 ? `...${currentBatchId.slice(-12)}` : currentBatchId
+    if (currentStatus === 'SUCCESS') {
+      toast.success('Lote ETL completado', {
+        description: `Batch #${shortId} termino sin errores`,
+      })
+    } else if (currentStatus === 'PARTIAL_FAILED') {
+      toast.warning('Lote ETL completado con errores parciales', {
+        description: `Batch #${shortId}`,
+      })
+    } else {
+      toast.error('Lote ETL fallo', {
+        description: `Batch #${shortId}`,
+      })
+    }
+    notifiedBatchRef.current = currentBatchId
+  }, [summary?.last_batch_id, summary?.last_batch_status])
 
   const handleRunEtl = useCallback(() => {
     etlRun.mutate({})
@@ -451,16 +489,13 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                     isCompact
                     isStriped
                     removeWrapper
-                    classNames={{ th: 'text-xs', td: 'text-xs sm:text-sm', table: 'min-w-[700px]' }}
+                    classNames={{ th: 'text-xs', td: 'text-xs sm:text-sm', table: 'min-w-[500px]' }}
                   >
                     <TableHeader>
                       <TableColumn>Archivo</TableColumn>
-                      <TableColumn>Fuente</TableColumn>
                       <TableColumn>Estado</TableColumn>
                       <TableColumn align="end">Leidas</TableColumn>
                       <TableColumn align="end">Insertadas</TableColumn>
-                      <TableColumn align="end">Actualizadas</TableColumn>
-                      <TableColumn align="end">Rechazadas</TableColumn>
                       <TableColumn>Error</TableColumn>
                     </TableHeader>
                     <TableBody>
@@ -468,9 +503,6 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                         <TableRow key={file.id}>
                           <TableCell>
                             <span className="font-medium whitespace-nowrap">{file.filename}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-default-500 whitespace-nowrap">{sanitizeDisplayText(file.source_key)}</span>
                           </TableCell>
                           <TableCell>
                             <Chip size="sm" color={statusColor(file.status)} variant="flat" className="whitespace-nowrap">
@@ -482,12 +514,6 @@ function BatchCard({ batch, isActive }: { batch: EtlBatchItem; isActive: boolean
                           </TableCell>
                           <TableCell>
                             <span className="tabular-nums whitespace-nowrap">{fmtNumber(file.rows_inserted)}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="tabular-nums whitespace-nowrap">{fmtNumber(file.rows_updated)}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="tabular-nums whitespace-nowrap">{fmtNumber(file.rows_rejected)}</span>
                           </TableCell>
                           <TableCell>
                             {file.error_message ? (
@@ -621,7 +647,7 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
           aria-label="Estado por fuente"
           isStriped
           isCompact
-          classNames={{ wrapper: 'shadow-sm', table: 'min-w-[800px]' }}
+          classNames={{ wrapper: 'shadow-sm', table: 'min-w-[600px]' }}
         >
           <TableHeader>
             <TableColumn>Archivo</TableColumn>
@@ -629,14 +655,9 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
             <TableColumn>Ultima Carga</TableColumn>
             <TableColumn align="end">Leidas</TableColumn>
             <TableColumn align="end">Insertadas</TableColumn>
-            <TableColumn align="end">Actualizadas</TableColumn>
-            <TableColumn align="end">Sin Cambios</TableColumn>
-            <TableColumn align="end">Rechazadas</TableColumn>
-            <TableColumn align="center">% Sin Cambios</TableColumn>
           </TableHeader>
           <TableBody>
             {data.map((row) => {
-              const pct = parseFloat(row.pct_sin_cambios) || 0
               return (
                 <TableRow key={row.archivo}>
                   <TableCell>
@@ -655,27 +676,6 @@ function SourceStatusTable({ data }: { data: EtlSourceStatus[] }) {
                   </TableCell>
                   <TableCell>
                     <span className="tabular-nums whitespace-nowrap">{fmtNumber(row.nuevas)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="tabular-nums whitespace-nowrap">{fmtNumber(row.actualizadas)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="tabular-nums whitespace-nowrap">{fmtNumber(row.sin_cambios)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="tabular-nums whitespace-nowrap">{fmtNumber(row.rechazadas)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-center gap-1">
-                      <Progress
-                        size="sm"
-                        value={pct}
-                        color={pct > 90 ? 'success' : pct > 50 ? 'warning' : 'primary'}
-                        className="max-w-[80px]"
-                        aria-label={`${sanitizeDisplayText(row.pct_sin_cambios)} sin cambios`}
-                      />
-                      <span className="text-xs text-default-400 tabular-nums">{sanitizeDisplayText(row.pct_sin_cambios)}</span>
-                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -744,32 +744,19 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
           aria-label="Historial de ejecuciones"
           isStriped
           isCompact
-          classNames={{ wrapper: 'shadow-sm', table: 'min-w-[900px]' }}
+          classNames={{ wrapper: 'shadow-sm', table: 'min-w-[600px]' }}
         >
           <TableHeader>
-            <TableColumn>ID</TableColumn>
-            <TableColumn>Batch</TableColumn>
             <TableColumn>Fuente</TableColumn>
             <TableColumn>Estado</TableColumn>
             <TableColumn>Inicio</TableColumn>
-            <TableColumn>Fin</TableColumn>
             <TableColumn align="end">Leidas</TableColumn>
             <TableColumn align="end">Insertadas</TableColumn>
-            <TableColumn align="end">Actualizadas</TableColumn>
-            <TableColumn align="end">Rechazadas</TableColumn>
             <TableColumn>Error</TableColumn>
           </TableHeader>
           <TableBody>
             {data.map((exec) => (
               <TableRow key={exec.id}>
-                <TableCell>
-                  <span className="font-mono text-xs whitespace-nowrap">{exec.id}</span>
-                </TableCell>
-                <TableCell>
-                  <Tooltip content={sanitizeDisplayText(exec.batch_id, 'Sin batch')}>
-                    <span className="text-xs text-default-500 whitespace-nowrap">{shortBatchId(exec.batch_id)}</span>
-                  </Tooltip>
-                </TableCell>
                 <TableCell>
                   <span className="font-medium whitespace-nowrap">{exec.source_key}</span>
                 </TableCell>
@@ -782,19 +769,10 @@ function ExecutionsTable({ data }: { data: EtlExecutionItem[] }) {
                   <span className="text-default-500 text-xs whitespace-nowrap">{fmtDateTime(exec.started_at)}</span>
                 </TableCell>
                 <TableCell>
-                  <span className="text-default-500 text-xs whitespace-nowrap">{fmtDateTime(exec.finished_at)}</span>
-                </TableCell>
-                <TableCell>
                   <span className="tabular-nums whitespace-nowrap">{fmtNumber(exec.rows_read)}</span>
                 </TableCell>
                 <TableCell>
                   <span className="tabular-nums whitespace-nowrap">{fmtNumber(exec.rows_inserted)}</span>
-                </TableCell>
-                <TableCell>
-                  <span className="tabular-nums whitespace-nowrap">{fmtNumber(exec.rows_updated)}</span>
-                </TableCell>
-                <TableCell>
-                  <span className="tabular-nums whitespace-nowrap">{fmtNumber(exec.rows_rejected)}</span>
                 </TableCell>
                 <TableCell>
                   {exec.error_message ? (

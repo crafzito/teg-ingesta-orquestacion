@@ -5,10 +5,9 @@ import { useAuthStore } from '../stores/authStore'
 
 export function AuthLayout() {
   const initialized = useAuthStore((s) => s.initialized)
-  const isLoading = useAuthStore((s) => s.isLoading)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
-  if (!initialized || isLoading) {
+  if (!initialized) {
     return <LoadingSpinner className="min-h-screen" />
   }
 

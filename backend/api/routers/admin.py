@@ -25,6 +25,31 @@ from ..models import (
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
+
+def validate_password(pw: str) -> None:
+    """Enforce password policy: min 8 chars, 1 upper, 1 lower, 1 digit."""
+    if len(pw) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contrasena debe tener al menos 8 caracteres",
+        )
+    if not any(c.isupper() for c in pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contrasena debe tener al menos una mayuscula",
+        )
+    if not any(c.islower() for c in pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contrasena debe tener al menos una minuscula",
+        )
+    if not any(c.isdigit() for c in pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contrasena debe tener al menos un numero",
+        )
+
+
 _SUPERADMIN_ONLY = {"superadmin"}
 _ROLE_ORDER = {"superadmin": 0, "admin": 1, "analista": 2}
 _ROLE_MATRIX = [
@@ -213,6 +238,8 @@ def create_user(
             detail=f"Rol invalido: '{req.role}'. Roles validos: {list(VALID_ROLES)}",
         )
 
+    validate_password(req.password)
+
     password_hash = hash_password(req.password)
 
     with write_conn() as conn:
@@ -262,7 +289,8 @@ def update_user(
         sets.append("role = %s")
         params.append(req.role)
 
-    if req.password is not None:
+    if req.password is not None and req.password != "":
+        validate_password(req.password)
         sets.append("password_hash = %s")
         params.append(hash_password(req.password))
 
@@ -321,34 +349,6 @@ def toggle_user_active(
         )
 
     return _row_to_user_detail(row)
-
-
-@router.delete("/users/{user_id}")
-def delete_user(
-    user_id: int,
-    current_user: UserOut = Depends(require_role(_SUPERADMIN_ONLY)),
-):
-    if current_user.id == user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes eliminar tu propio usuario",
-        )
-
-    with write_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM auth.users WHERE id = %s RETURNING id",
-                (user_id,),
-            )
-            row = cur.fetchone()
-
-    if not row:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Usuario con id {user_id} no encontrado",
-        )
-
-    return {"ok": True}
 
 
 @router.get("/sidebar-config", response_model=dict[str, dict[str, bool]])

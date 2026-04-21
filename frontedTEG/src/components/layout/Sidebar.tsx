@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { Button } from '@heroui/react'
 import {
   Activity,
+  BookOpen,
   Box,
   ChevronLeft,
   CreditCard,
@@ -61,6 +62,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { to: '/etl', icon: Activity, label: 'Monitor ETL', allowedRoles: ['superadmin', 'admin'] },
       { to: '/administracion', icon: ShieldCheck, label: 'Administración', allowedRoles: ['superadmin'] },
+      { to: '/manual', icon: BookOpen, label: 'Ayuda / Manual' },
     ],
   },
 ]

@@ -5,19 +5,22 @@ import type { InventarioRow } from '../../types/domain'
 
 export function useInventarioTable() {
   const soc = useUiStore((s) => s.selectedSociedad)
-  return useQueryData<InventarioRow>(['inventario', 'table', soc], queryInventario(soc))
+  const centro = useUiStore((s) => s.selectedCentro)
+  return useQueryData<InventarioRow>(['inventario', 'table', soc, centro], queryInventario({ soc, centro }))
 }
 
 export function useInventarioPorCentro() {
   const soc = useUiStore((s) => s.selectedSociedad)
+  const centro = useUiStore((s) => s.selectedCentro)
   return useQueryData<{ centro: string; stock: number; valor: number; materiales: number }>(
-    ['inventario', 'por-centro', soc], queryInventarioPorCentro(soc)
+    ['inventario', 'por-centro', soc, centro], queryInventarioPorCentro({ soc, centro })
   )
 }
 
 export function useInventarioTopMateriales() {
   const soc = useUiStore((s) => s.selectedSociedad)
+  const centro = useUiStore((s) => s.selectedCentro)
   return useQueryData<{ material: string; nombre: string; stock: number; valor: number }>(
-    ['inventario', 'top-materiales', soc], queryInventarioTopMateriales(soc)
+    ['inventario', 'top-materiales', soc, centro], queryInventarioTopMateriales({ soc, centro })
   )
 }

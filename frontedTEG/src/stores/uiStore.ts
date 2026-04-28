@@ -32,7 +32,7 @@ function persistSectionToBackend(role: string, sections: Record<string, boolean>
   })
 }
 
-export type DateRangeKey = '30d' | '90d' | 'ytd' | 'all'
+export type PeriodoKey = 'mes' | 'trimestre' | 'ano' | 'todo'
 
 interface UiState {
   sidebarOpen: boolean
@@ -45,8 +45,8 @@ interface UiState {
   setSociedad: (soc: Sociedad) => void
   selectedCentro: string
   setCentro: (centro: string) => void
-  selectedRange: DateRangeKey
-  setRange: (range: DateRangeKey) => void
+  selectedPeriodo: PeriodoKey
+  setPeriodo: (p: PeriodoKey) => void
   sidebarSectionsByRole: Record<string, Record<string, boolean>>
   setSidebarSectionsByRole: (data: Record<string, Record<string, boolean>>) => void
   toggleSection: (role: string, label: string) => void
@@ -69,8 +69,8 @@ export const useUiStore = create<UiState>()((set, get) => ({
   setSociedad: (soc) => set({ selectedSociedad: soc }),
   selectedCentro: '',
   setCentro: (centro) => set({ selectedCentro: centro }),
-  selectedRange: '90d',
-  setRange: (range) => set({ selectedRange: range }),
+  selectedPeriodo: 'ano',
+  setPeriodo: (p) => set({ selectedPeriodo: p }),
   sidebarSectionsByRole: { ...DEFAULT_SIDEBAR_SECTIONS_BY_ROLE },
   setSidebarSectionsByRole: (data) => set({ sidebarSectionsByRole: data }),
   toggleSection: (role, label) => {

@@ -49,7 +49,7 @@ export default function InventarioPage() {
       <PageHeader title="Inventario" description="Stock y valorizacion por centro y material" />
       <FilterBar showCentro />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="Valor Total" value={formatCurrency(kpis.valor)} icon={<Package className="h-5 w-5" />} accent="warning" index={0} />
         <KPICard title="Materiales" value={formatNumber(kpis.materiales)} icon={<Boxes className="h-5 w-5" />} accent="primary" index={1} />
         <KPICard title="Centros" value={formatNumber(kpis.centros)} icon={<MapPin className="h-5 w-5" />} accent="violet" index={2} />

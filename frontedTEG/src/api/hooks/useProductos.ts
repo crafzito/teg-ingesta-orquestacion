@@ -5,5 +5,6 @@ import type { ProductoRow } from '../../types/domain'
 
 export function useProductosTable() {
   const soc = useUiStore((s) => s.selectedSociedad)
-  return useQueryData<ProductoRow>(['productos', 'table', soc], queryProductos(soc))
+  const centro = useUiStore((s) => s.selectedCentro)
+  return useQueryData<ProductoRow>(['productos', 'table', soc, centro], queryProductos({ soc, centro }))
 }

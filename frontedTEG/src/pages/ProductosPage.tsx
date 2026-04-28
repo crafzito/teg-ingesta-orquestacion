@@ -34,7 +34,7 @@ export default function ProductosPage() {
       <PageHeader title="Productos" description="Catalogo de materiales con stock y valorizacion" />
       <FilterBar showRange={false} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="Productos" value={formatNumber(kpis.total)} icon={<Boxes className="h-5 w-5" />} accent="primary" index={0} />
         <KPICard title="Valor Total" value={formatCurrency(kpis.valor)} icon={<Package className="h-5 w-5" />} accent="warning" index={1} />
         <KPICard title="Stock Total" value={formatNumber(kpis.stock)} icon={<Layers className="h-5 w-5" />} accent="violet" index={2} />

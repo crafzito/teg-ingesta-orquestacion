@@ -56,7 +56,7 @@ export default function VentasPage() {
       <PageHeader title="Ventas" description="Analisis de ventas por periodo, cliente y producto" />
       <FilterBar />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="Ventas del Mes" value={formatCurrency(currentTotal)} icon={<DollarSign className="h-5 w-5" />} accent="success" sparkline={sparkline} trend={trendDelta} index={0} />
         <KPICard title="Ticket Promedio" value={formatCurrency(ticketPromedio)} icon={<Receipt className="h-5 w-5" />} accent="primary" index={1} />
         <KPICard title="Facturas" value={formatNumber(numFacturas)} icon={<ShoppingBag className="h-5 w-5" />} accent="violet" index={2} />

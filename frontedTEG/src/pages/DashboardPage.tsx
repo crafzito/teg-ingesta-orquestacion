@@ -107,6 +107,23 @@ export default function DashboardPage() {
     [charts.ordenesCentro],
   )
 
+  const ticketsSociedadData = useMemo(
+    () => charts.ticketsSociedad.map((r) => ({
+      sociedad: sociedadLabel(String(r.sociedad || 'Sin clasificar')).replace(' (Consumo)', '').replace(' (Empaque)', ''),
+      Tickets: Number(r.total),
+    })),
+    [charts.ticketsSociedad],
+  )
+
+  const ventasVsCxcData = useMemo(
+    () => charts.ventasVsCxcSociedad.map((r) => ({
+      sociedad: sociedadLabel(String(r.sociedad || 'Sin clasificar')).replace(' (Consumo)', '').replace(' (Empaque)', ''),
+      Ventas: Number(r.ventas),
+      CxC: Number(r.cxc),
+    })),
+    [charts.ventasVsCxcSociedad],
+  )
+
   return (
     <div>
       <PageHeader title="Dashboard" description="Vista general del negocio" />
@@ -116,7 +133,7 @@ export default function DashboardPage() {
         <LoadingSpinner />
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 items-stretch">
             <KPICard
               title="Ventas del Mes"
               value={formatCurrency(kpis.ventasMes)}
@@ -292,6 +309,44 @@ export default function DashboardPage() {
                           />
                         ))}
                       </LineChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Tickets por Sociedad"
+                    subtitle="Facturas únicas (últimos 3 meses)"
+                    index={5}
+                    height="md"
+                    className="lg:col-span-1"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={ticketsSociedadData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="sociedad" tick={{ fontSize: 11 }} stroke="#a1a1aa" />
+                        <YAxis tick={{ fontSize: 11 }} stroke="#a1a1aa" tickFormatter={(v) => formatNumber(v)} />
+                        <Tooltip content={<ChartTooltip valueFormatter={(v) => formatNumber(v)} />} />
+                        <Bar dataKey="Tickets" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Ventas vs CxC por Sociedad"
+                    subtitle="Ventas del mes vs CxC total"
+                    index={6}
+                    height="md"
+                    className="lg:col-span-2"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={ventasVsCxcData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="sociedad" tick={{ fontSize: 11 }} stroke="#a1a1aa" />
+                        <YAxis tick={{ fontSize: 11 }} stroke="#a1a1aa" tickFormatter={(v) => formatCurrency(v)} />
+                        <Tooltip content={<ChartTooltip valueFormatter={(v) => formatCurrency(v)} />} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="Ventas" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="CxC" fill={CHART_COLORS[2]} radius={[4, 4, 0, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </ChartCard>
                 </div>

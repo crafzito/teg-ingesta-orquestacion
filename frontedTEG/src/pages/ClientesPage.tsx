@@ -34,7 +34,7 @@ export default function ClientesPage() {
       <PageHeader title="Clientes" description="Directorio de clientes y metricas de venta" />
       <FilterBar showRange={false} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="Clientes" value={formatNumber(kpis.total)} icon={<Users className="h-5 w-5" />} accent="primary" index={0} />
         <KPICard title="Ventas Totales" value={formatCurrency(kpis.ventas)} icon={<DollarSign className="h-5 w-5" />} accent="success" index={1} />
         <KPICard title="Facturas" value={formatNumber(kpis.facturas)} icon={<Receipt className="h-5 w-5" />} accent="violet" index={2} />

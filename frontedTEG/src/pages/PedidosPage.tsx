@@ -51,7 +51,7 @@ export default function PedidosPage() {
       <PageHeader title="Pedidos" description="Seguimiento de pedidos de venta" />
       <FilterBar />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="Pedidos del Mes" value={formatNumber(kpis.totalPedidos)} icon={<ShoppingCart className="h-5 w-5" />} accent="pink" trend={kpis.trend} sparkline={kpis.sparkline} index={0} />
         <KPICard title="Valor del Mes" value={formatCurrency(kpis.valorTotal)} icon={<DollarSign className="h-5 w-5" />} accent="success" index={1} />
         <KPICard title="Ticket Promedio" value={formatCurrency(kpis.ticket)} icon={<Tag className="h-5 w-5" />} accent="primary" index={2} />

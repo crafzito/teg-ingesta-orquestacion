@@ -1,10 +1,17 @@
 import type { Sociedad } from '../../types/domain'
+import type { PeriodoKey } from '../../stores/uiStore'
+import { buildFilterClauses } from '../filters'
 
-function socFilter(soc: Sociedad): string {
-  return soc ? ` AND sociedad = '${soc}'` : ''
+export interface ClientesFilter {
+  soc: Sociedad
+  periodo: PeriodoKey
 }
 
-export function queryClientes(soc: Sociedad, limit = 5000): string {
+export function queryClientes(f: ClientesFilter, limit = 5000): string {
+  const { andClauses } = buildFilterClauses({
+    soc: f.soc, centro: '', periodo: f.periodo,
+    sociedadCol: 'sociedad', fechaCol: 'fecha_doc',
+  })
   return `
     SELECT cod_cliente,
            COALESCE(nombre_cliente, cod_cliente) as nombre_cliente,
@@ -13,7 +20,7 @@ export function queryClientes(soc: Sociedad, limit = 5000): string {
            COUNT(*) as num_facturas,
            MAX(fecha_doc)::text as ultima_compra
     FROM public.v_ventas
-    WHERE 1=1${socFilter(soc)}
+    WHERE 1=1${andClauses}
     GROUP BY cod_cliente, nombre_cliente, sociedad
     ORDER BY total_ventas DESC
     LIMIT ${limit}

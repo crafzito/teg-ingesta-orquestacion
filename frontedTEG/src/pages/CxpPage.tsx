@@ -47,7 +47,7 @@ export default function CxpPage() {
       <PageHeader title="Cuentas por Pagar" description="Analisis de pagos y antiguedad" />
       <FilterBar />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="CxP Total" value={formatCurrency(totals.total)} icon={<Wallet className="h-5 w-5" />} accent="primary" index={0} />
         <KPICard title="CxP Vencida" value={formatCurrency(totals.vencida)} icon={<AlertTriangle className="h-5 w-5" />} accent="accent" index={1} />
         <KPICard title="% Vencido" value={formatPercent(ratio)} icon={<Percent className="h-5 w-5" />} accent="warning" index={2} />

@@ -7,6 +7,7 @@ import {
   kpiInventarioValor, kpiOrdenesActivas, kpiPedidosMes,
   chartVentasMensuales, chartAgingCxc, chartTopClientes,
   chartVentasSociedad, chartPedidosStatus, chartOrdenesCentro,
+  chartTicketsSociedad, chartVentasVsCxcSociedad,
 } from '../queries/dashboard'
 
 async function fetchScalar(sql: string): Promise<number> {
@@ -25,10 +26,11 @@ async function fetchRows<T extends Record<string, unknown>>(sql: string): Promis
 
 export function useDashboardKPIs() {
   const soc = useUiStore((s) => s.selectedSociedad)
+  const periodo = useUiStore((s) => s.selectedPeriodo)
 
   const results = useQueries({
     queries: [
-      { queryKey: ['kpi', 'ventas-mes', soc], queryFn: () => fetchScalar(kpiVentasMes(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
+      { queryKey: ['kpi', 'ventas-mes', soc, periodo], queryFn: () => fetchScalar(kpiVentasMes(soc, periodo)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
       { queryKey: ['kpi', 'cxc-total', soc], queryFn: () => fetchScalar(kpiCxcTotal(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
       { queryKey: ['kpi', 'cxc-vencida', soc], queryFn: () => fetchScalar(kpiCxcVencida(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
       { queryKey: ['kpi', 'inventario-valor', soc], queryFn: () => fetchScalar(kpiInventarioValor(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
@@ -54,12 +56,13 @@ export function useDashboardKPIs() {
 
 export function useDashboardCharts() {
   const soc = useUiStore((s) => s.selectedSociedad)
+  const periodo = useUiStore((s) => s.selectedPeriodo)
 
   const ventasMensuales = useQueries({
     queries: [
       {
-        queryKey: ['chart', 'ventas-mensuales', soc],
-        queryFn: () => fetchRows<{ mes: string; sociedad_1000?: number; sociedad_1200?: number; sociedad_1300?: number; total?: number }>(chartVentasMensuales(soc)),
+        queryKey: ['chart', 'ventas-mensuales', soc, periodo],
+        queryFn: () => fetchRows<{ mes: string; sociedad_1000?: number; sociedad_1200?: number; sociedad_1300?: number; total?: number }>(chartVentasMensuales(soc, periodo)),
         staleTime: STALE_TIME,
         refetchOnMount: 'always' as const,
       },
@@ -70,8 +73,8 @@ export function useDashboardCharts() {
         refetchOnMount: 'always' as const,
       },
       {
-        queryKey: ['chart', 'top-clientes', soc],
-        queryFn: () => fetchRows<{ nombre: string; total: number }>(chartTopClientes(soc)),
+        queryKey: ['chart', 'top-clientes', soc, periodo],
+        queryFn: () => fetchRows<{ nombre: string; total: number }>(chartTopClientes(soc, periodo)),
         staleTime: STALE_TIME,
         refetchOnMount: 'always' as const,
       },
@@ -93,6 +96,18 @@ export function useDashboardCharts() {
         staleTime: STALE_TIME,
         refetchOnMount: 'always' as const,
       },
+      {
+        queryKey: ['chart', 'tickets-sociedad', soc],
+        queryFn: () => fetchRows<{ sociedad: string; total: number }>(chartTicketsSociedad(soc)),
+        staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
+      },
+      {
+        queryKey: ['chart', 'ventas-vs-cxc-sociedad', soc],
+        queryFn: () => fetchRows<{ sociedad: string; ventas: number; cxc: number }>(chartVentasVsCxcSociedad(soc)),
+        staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
+      },
     ],
   })
 
@@ -103,6 +118,8 @@ export function useDashboardCharts() {
     ventasSociedad: ventasMensuales[3].data ?? [],
     pedidosStatus: (ventasMensuales[4].data ?? []).map((r) => ({ name: r.nombre, value: Number(r.total) })),
     ordenesCentro: ventasMensuales[5].data ?? [],
+    ticketsSociedad: ventasMensuales[6].data ?? [],
+    ventasVsCxcSociedad: ventasMensuales[7].data ?? [],
     isLoading: ventasMensuales.some((r) => r.isLoading),
   }
 }

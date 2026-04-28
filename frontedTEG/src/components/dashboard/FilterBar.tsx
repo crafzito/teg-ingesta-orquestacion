@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Calendar, Building2, MapPin } from 'lucide-react'
-import { useUiStore, type DateRangeKey } from '../../stores/uiStore'
+import { useUiStore, type PeriodoKey } from '../../stores/uiStore'
 import type { Sociedad } from '../../types/domain'
 
 interface SegmentOption<T extends string> {
@@ -16,11 +16,11 @@ const SOCIEDAD_OPTIONS: SegmentOption<Sociedad>[] = [
   { value: '1300', label: 'Proy. PET', short: 'Proy. PET' },
 ]
 
-const RANGE_OPTIONS: SegmentOption<DateRangeKey>[] = [
-  { value: '30d', label: 'Ult. 30d' },
-  { value: '90d', label: 'Ult. 90d' },
-  { value: 'ytd', label: 'YTD' },
-  { value: 'all', label: 'Todo' },
+const PERIODO_OPTIONS: SegmentOption<PeriodoKey>[] = [
+  { value: 'mes', label: 'Mes actual', short: 'Mes' },
+  { value: 'trimestre', label: 'Trimestre', short: 'Trim.' },
+  { value: 'ano', label: 'Año actual', short: 'Año' },
+  { value: 'todo', label: 'Todo', short: 'Todo' },
 ]
 
 const CENTRO_OPTIONS: SegmentOption<string>[] = [
@@ -85,8 +85,8 @@ export function FilterBar({ showCentro = false, showRange = true, sticky = true 
   const setSociedad = useUiStore((s) => s.setSociedad)
   const selectedCentro = useUiStore((s) => s.selectedCentro)
   const setCentro = useUiStore((s) => s.setCentro)
-  const selectedRange = useUiStore((s) => s.selectedRange)
-  const setRange = useUiStore((s) => s.setRange)
+  const selectedPeriodo = useUiStore((s) => s.selectedPeriodo)
+  const setPeriodo = useUiStore((s) => s.setPeriodo)
 
   return (
     <div
@@ -108,13 +108,13 @@ export function FilterBar({ showCentro = false, showRange = true, sticky = true 
         {showRange && (
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-default-500">
-              <Calendar className="h-3.5 w-3.5" /> Rango
+              <Calendar className="h-3.5 w-3.5" /> Período
             </span>
             <Segmented
-              options={RANGE_OPTIONS}
-              value={selectedRange}
-              onChange={setRange}
-              ariaLabel="Rango temporal"
+              options={PERIODO_OPTIONS}
+              value={selectedPeriodo}
+              onChange={setPeriodo}
+              ariaLabel="Período"
             />
           </div>
         )}

@@ -5,5 +5,6 @@ import type { ClienteRow } from '../../types/domain'
 
 export function useClientesTable() {
   const soc = useUiStore((s) => s.selectedSociedad)
-  return useQueryData<ClienteRow>(['clientes', 'table', soc], queryClientes(soc))
+  const periodo = useUiStore((s) => s.selectedPeriodo)
+  return useQueryData<ClienteRow>(['clientes', 'table', soc, periodo], queryClientes({ soc, periodo }))
 }

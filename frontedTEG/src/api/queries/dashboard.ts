@@ -1,4 +1,5 @@
 import type { Sociedad } from '../../types/domain'
+import type { PeriodoKey } from '../../stores/uiStore'
 import { withScopedPedidos } from './pedidosScope'
 
 function socFilter(soc: Sociedad, col = 'sociedad'): string {
@@ -15,8 +16,37 @@ function resilientSocFilter(soc: Sociedad, view: string, col = 'sociedad'): stri
   return ` AND (NOT ${supportsSegmentation(view, col)} OR ${col} = '${soc}')`
 }
 
-export function kpiVentasMes(soc: Sociedad): string {
-  return `SELECT COALESCE(SUM(monto_usd), 0) as total FROM public.v_ventas WHERE date_trunc('month', fecha_doc) = date_trunc('month', CURRENT_DATE)${resilientSocFilter(soc, 'public.v_ventas')}`
+function periodoBoundary(periodo: PeriodoKey, fechaCol: string): string {
+  switch (periodo) {
+    case 'mes':
+      return ` AND ${fechaCol} >= date_trunc('month', CURRENT_DATE)`
+    case 'trimestre':
+      return ` AND ${fechaCol} >= date_trunc('quarter', CURRENT_DATE)`
+    case 'ano':
+      return ` AND ${fechaCol} >= date_trunc('year', CURRENT_DATE)`
+    case 'todo':
+    default:
+      return ''
+  }
+}
+
+export function kpiVentasMes(soc: Sociedad, periodo: PeriodoKey = 'mes'): string {
+  let dateClause: string
+  switch (periodo) {
+    case 'trimestre':
+      dateClause = `date_trunc('quarter', fecha_doc) = date_trunc('quarter', CURRENT_DATE)`
+      break
+    case 'ano':
+      dateClause = `date_trunc('year', fecha_doc) = date_trunc('year', CURRENT_DATE)`
+      break
+    case 'todo':
+      dateClause = `1=1`
+      break
+    case 'mes':
+    default:
+      dateClause = `date_trunc('month', fecha_doc) = date_trunc('month', CURRENT_DATE)`
+  }
+  return `SELECT COALESCE(SUM(monto_usd), 0) as total FROM public.v_ventas WHERE ${dateClause}${resilientSocFilter(soc, 'public.v_ventas')}`
 }
 
 export function kpiCxcTotal(soc: Sociedad): string {
@@ -42,14 +72,15 @@ export function kpiPedidosMes(soc: Sociedad): string {
   )
 }
 
-export function chartVentasMensuales(soc: Sociedad): string {
+export function chartVentasMensuales(soc: Sociedad, periodo: PeriodoKey = 'todo'): string {
+  const periodoExtra = periodoBoundary(periodo, 'fecha_doc')
   if (soc) {
     return `
       SELECT
         to_char(date_trunc('month', fecha_doc), 'YYYY-MM') as mes,
         COALESCE(SUM(monto_usd), 0) as total
       FROM public.v_ventas
-      WHERE fecha_doc >= (CURRENT_DATE - interval '12 months')${resilientSocFilter(soc, 'public.v_ventas')}
+      WHERE fecha_doc >= (CURRENT_DATE - interval '12 months')${resilientSocFilter(soc, 'public.v_ventas')}${periodoExtra}
       GROUP BY date_trunc('month', fecha_doc)
       ORDER BY mes
     `
@@ -62,7 +93,7 @@ export function chartVentasMensuales(soc: Sociedad): string {
       COALESCE(SUM(CASE WHEN sociedad = '1200' THEN monto_usd END), 0) as sociedad_1200,
       COALESCE(SUM(CASE WHEN sociedad = '1300' THEN monto_usd END), 0) as sociedad_1300
     FROM public.v_ventas
-    WHERE fecha_doc >= (CURRENT_DATE - interval '12 months')${socFilter(soc)}
+    WHERE fecha_doc >= (CURRENT_DATE - interval '12 months')${socFilter(soc)}${periodoExtra}
     GROUP BY date_trunc('month', fecha_doc)
     ORDER BY mes
   `
@@ -85,13 +116,28 @@ export function chartAgingCxc(soc: Sociedad): string {
   `
 }
 
-export function chartTopClientes(soc: Sociedad): string {
+export function chartTopClientes(soc: Sociedad, periodo: PeriodoKey = 'todo'): string {
+  let dateClause: string
+  switch (periodo) {
+    case 'mes':
+      dateClause = `fecha_doc >= date_trunc('month', CURRENT_DATE)`
+      break
+    case 'trimestre':
+      dateClause = `fecha_doc >= date_trunc('quarter', CURRENT_DATE)`
+      break
+    case 'ano':
+      dateClause = `fecha_doc >= date_trunc('year', CURRENT_DATE)`
+      break
+    case 'todo':
+    default:
+      dateClause = `date_trunc('month', fecha_doc) >= date_trunc('month', CURRENT_DATE) - interval '3 months'`
+  }
   return `
     SELECT
       COALESCE(nombre_cliente, cod_cliente) as nombre,
       SUM(monto_usd) as total
     FROM public.v_ventas
-    WHERE date_trunc('month', fecha_doc) >= date_trunc('month', CURRENT_DATE) - interval '3 months'${resilientSocFilter(soc, 'public.v_ventas')}
+    WHERE ${dateClause}${resilientSocFilter(soc, 'public.v_ventas')}
     GROUP BY nombre
     ORDER BY total DESC
     LIMIT 10
@@ -135,6 +181,42 @@ export function chartPedidosStatus(soc: Sociedad): string {
     `,
     soc,
   )
+}
+
+export function chartTicketsSociedad(soc: Sociedad): string {
+  return `
+    SELECT
+      COALESCE(sociedad, 'Sin clasificar') as sociedad,
+      COUNT(DISTINCT num_factura) as total
+    FROM public.v_ventas
+    WHERE date_trunc('month', fecha_doc) >= date_trunc('month', CURRENT_DATE) - interval '2 months'${resilientSocFilter(soc, 'public.v_ventas')}
+    GROUP BY sociedad
+    ORDER BY sociedad
+  `
+}
+
+export function chartVentasVsCxcSociedad(soc: Sociedad): string {
+  const ventasFilter = resilientSocFilter(soc, 'public.v_ventas')
+  const cxcFilter = resilientSocFilter(soc, 'public.v_cxc')
+  return `
+    WITH v AS (
+      SELECT COALESCE(sociedad, 'Sin clasificar') as sociedad, COALESCE(SUM(monto_usd), 0) as ventas
+      FROM public.v_ventas
+      WHERE date_trunc('month', fecha_doc) = date_trunc('month', CURRENT_DATE)${ventasFilter}
+      GROUP BY 1
+    ),
+    c AS (
+      SELECT COALESCE(sociedad, 'Sin clasificar') as sociedad, COALESCE(SUM(valor_monetario), 0) as cxc
+      FROM public.v_cxc
+      WHERE 1=1${cxcFilter}
+      GROUP BY 1
+    )
+    SELECT COALESCE(v.sociedad, c.sociedad) as sociedad,
+           COALESCE(v.ventas, 0) as ventas,
+           COALESCE(c.cxc, 0) as cxc
+    FROM v FULL OUTER JOIN c ON v.sociedad = c.sociedad
+    ORDER BY 1
+  `
 }
 
 export function chartOrdenesCentro(soc: Sociedad): string {

@@ -5,19 +5,22 @@ import type { PedidoRow } from '../../types/domain'
 
 export function usePedidosTable() {
   const soc = useUiStore((s) => s.selectedSociedad)
-  return useQueryData<PedidoRow>(['pedidos', 'table', soc], queryPedidos(soc))
+  const periodo = useUiStore((s) => s.selectedPeriodo)
+  return useQueryData<PedidoRow>(['pedidos', 'table', soc, periodo], queryPedidos({ soc, periodo }))
 }
 
 export function usePedidosPorEstatus() {
   const soc = useUiStore((s) => s.selectedSociedad)
+  const periodo = useUiStore((s) => s.selectedPeriodo)
   return useQueryData<{ nombre: string; total: number }>(
-    ['pedidos', 'por-estatus', soc], queryPedidosPorEstatus(soc)
+    ['pedidos', 'por-estatus', soc, periodo], queryPedidosPorEstatus({ soc, periodo })
   )
 }
 
 export function usePedidosPorMes() {
   const soc = useUiStore((s) => s.selectedSociedad)
+  const periodo = useUiStore((s) => s.selectedPeriodo)
   return useQueryData<{ mes: string; total_pedidos: number; valor_total: number }>(
-    ['pedidos', 'por-mes', soc], queryPedidosPorMes(soc)
+    ['pedidos', 'por-mes', soc, periodo], queryPedidosPorMes({ soc, periodo })
   )
 }

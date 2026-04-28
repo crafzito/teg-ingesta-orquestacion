@@ -47,7 +47,7 @@ export default function ProduccionPage() {
       <PageHeader title="Ordenes de Produccion" description="Seguimiento de ordenes por centro y estatus" />
       <FilterBar showCentro />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 items-stretch">
         <KPICard title="Ordenes Activas" value={formatNumber(kpis.activas)} icon={<Factory className="h-5 w-5" />} accent="violet" index={0} />
         <KPICard title="Ordenes Cerradas" value={formatNumber(kpis.cerradas)} icon={<CheckCircle2 className="h-5 w-5" />} accent="success" index={1} />
         <KPICard title="Total" value={formatNumber(kpis.total)} icon={<ListChecks className="h-5 w-5" />} accent="primary" index={2} />

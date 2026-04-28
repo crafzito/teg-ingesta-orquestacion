@@ -24,7 +24,6 @@ import {
   useDisclosure,
 } from '@heroui/react'
 import {
-  Check,
   DatabaseZap,
   KeyRound,
   Pencil,
@@ -33,7 +32,6 @@ import {
   Settings2,
   ShieldCheck,
   Users,
-  X,
 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -43,10 +41,11 @@ import { useAdminOverview } from '../api/hooks/useAdminOverview'
 import { PageHeader } from '../components/ui/PageHeader'
 import { KpiCard } from '../components/ui/KpiCard'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
+import { PasswordRulesList } from '../components/ui/PasswordRulesList'
 import { ROLE_LABELS, type UserRole } from '../types/auth'
 import type { AdminUser } from '../types/admin'
 import { useUiStore } from '../stores/uiStore'
-import { PASSWORD_RULES, validatePassword } from '../utils/passwordValidation'
+import { validatePassword } from '../utils/passwordValidation'
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -86,9 +85,10 @@ interface UserFormState {
   password: string
   full_name: string
   role: UserRole
+  ci: string
 }
 
-const EMPTY_FORM: UserFormState = { username: '', password: '', full_name: '', role: 'analista' }
+const EMPTY_FORM: UserFormState = { username: '', password: '', full_name: '', role: 'analista', ci: '' }
 
 // Sistema section intentionally hidden from the sidebar toggles UI.
 const CONFIGURABLE_SECTIONS = ['Principal', 'Finanzas', 'Operaciones', 'Maestros']
@@ -99,10 +99,17 @@ export default function AdminPage() {
 
   const createUser = useMutation({
     mutationFn: async (body: UserFormState) => {
+      const payload = {
+        username: body.username,
+        password: body.password,
+        full_name: body.full_name,
+        role: body.role,
+        ci: body.ci.trim() === '' ? null : body.ci.trim(),
+      }
       const res = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       })
       return readJson<AdminUser>(res)
     },
@@ -110,7 +117,7 @@ export default function AdminPage() {
   })
 
   const updateUser = useMutation({
-    mutationFn: async ({ id, ...body }: { id: number; full_name?: string; role?: UserRole; password?: string }) => {
+    mutationFn: async ({ id, ...body }: { id: number; full_name?: string; role?: UserRole; password?: string; ci?: string | null }) => {
       const res = await fetch(`${API_BASE}/admin/users/${id}`, {
         method: 'PUT',
         headers: authHeaders(),
@@ -188,6 +195,7 @@ export default function AdminPage() {
       password: '',
       full_name: user.full_name ?? '',
       role: user.role,
+      ci: user.ci ?? '',
     })
     setMutationError('')
     editModal.onOpen()
@@ -225,10 +233,11 @@ export default function AdminPage() {
   const handleUpdate = useCallback(async () => {
     if (editId == null) return
     setMutationError('')
-    const payload: { id: number; full_name?: string; role?: UserRole; password?: string } = {
+    const payload: { id: number; full_name?: string; role?: UserRole; password?: string; ci?: string | null } = {
       id: editId,
       full_name: form.full_name,
       role: form.role,
+      ci: form.ci.trim() === '' ? null : form.ci.trim(),
     }
     if (form.password) payload.password = form.password
     try {
@@ -325,6 +334,7 @@ export default function AdminPage() {
                   <TableHeader>
                     <TableColumn>USUARIO</TableColumn>
                     <TableColumn>NOMBRE</TableColumn>
+                    <TableColumn>CEDULA</TableColumn>
                     <TableColumn>ROL</TableColumn>
                     <TableColumn>ESTADO</TableColumn>
                     <TableColumn>ULTIMO ACCESO</TableColumn>
@@ -335,6 +345,7 @@ export default function AdminPage() {
                       <TableRow key={user.id}>
                         <TableCell className="font-medium text-foreground">{user.username}</TableCell>
                         <TableCell>{user.full_name ?? user.username}</TableCell>
+                        <TableCell className="text-sm text-default-600">{user.ci ?? '—'}</TableCell>
                         <TableCell>
                           <Chip size="sm" variant="flat" color={ROLE_TONE[user.role]}>
                             {ROLE_LABELS[user.role]}
@@ -471,6 +482,14 @@ export default function AdminPage() {
                   onValueChange={(v) => setForm((p) => ({ ...p, full_name: v }))}
                   variant="bordered"
                 />
+                <Input
+                  label="Cedula de identidad"
+                  placeholder="Solo numeros"
+                  value={form.ci}
+                  onValueChange={(v) => setForm((p) => ({ ...p, ci: v.replace(/\D/g, '') }))}
+                  variant="bordered"
+                  inputMode="numeric"
+                />
                 <Select
                   label="Rol"
                   selectedKeys={[form.role]}
@@ -533,6 +552,14 @@ export default function AdminPage() {
                   value={form.full_name}
                   onValueChange={(v) => setForm((p) => ({ ...p, full_name: v }))}
                   variant="bordered"
+                />
+                <Input
+                  label="Cedula de identidad"
+                  placeholder="Solo numeros"
+                  value={form.ci}
+                  onValueChange={(v) => setForm((p) => ({ ...p, ci: v.replace(/\D/g, '') }))}
+                  variant="bordered"
+                  inputMode="numeric"
                 />
                 <Select
                   label="Rol"
@@ -690,21 +717,3 @@ export default function AdminPage() {
   )
 }
 
-function PasswordRulesList({ pw }: { pw: string }) {
-  return (
-    <ul className="space-y-1 rounded-lg bg-default-50 px-3 py-2 text-xs">
-      {PASSWORD_RULES.map((rule) => {
-        const ok = rule.test(pw)
-        return (
-          <li
-            key={rule.key}
-            className={`flex items-center gap-2 ${ok ? 'text-success-600' : 'text-default-500'}`}
-          >
-            {ok ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-            <span>{rule.label}</span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}

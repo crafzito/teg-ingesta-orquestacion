@@ -99,3 +99,29 @@ export async function logoutRequest(token: string | null): Promise<void> {
     throw await readJsonError(res)
   }
 }
+
+export interface ResetPasswordPayload {
+  username: string
+  ci: string
+  new_password: string
+}
+
+export interface ResetPasswordResponse {
+  status: string
+  message: string
+}
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<ResetPasswordResponse> {
+  // Endpoint publico: NO incluir Authorization header.
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!res.ok) {
+    throw await readJsonError(res)
+  }
+
+  return (await res.json()) as ResetPasswordResponse
+}

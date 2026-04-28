@@ -12,17 +12,27 @@ const DEMO_CREDENTIALS = [
   'analista / Analista#2026',
 ]
 
+interface LoginLocationState {
+  from?: string
+  justReset?: boolean
+  username?: string
+}
+
 export default function LoginPage() {
-  const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('Admin#2026')
+  const location = useLocation()
+  const locState = (location.state as LoginLocationState | null) ?? null
+  const justReset = Boolean(locState?.justReset)
+  const presetUsername = locState?.username
+
+  const [username, setUsername] = useState(presetUsername ?? 'admin')
+  const [password, setPassword] = useState(presetUsername ? '' : 'Admin#2026')
   const [error, setError] = useState('')
   const [showPw, setShowPw] = useState(false)
 
   const login = useAuthStore((s) => s.login)
   const loading = useAuthStore((s) => s.isLoading)
   const navigate = useNavigate()
-  const location = useLocation()
-  const nextPath = (location.state as { from?: string } | null)?.from || '/'
+  const nextPath = locState?.from || '/'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -60,6 +70,11 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-default-500">Ingrese sus credenciales</p>
         </CardHeader>
         <CardBody className="px-8 pb-8 pt-6">
+          {justReset && !error && (
+            <div className="mb-4 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+              Contraseña actualizada, inicia sesión.
+            </div>
+          )}
           {error && (
             <div className="mb-4 rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger">
               {error}
@@ -101,6 +116,14 @@ export default function LoginPage() {
             >
               Iniciar sesión
             </Button>
+            <div className="text-center">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-default-500 hover:text-[#091B6B] transition-colors"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
           </form>
           <div className="mt-6 rounded-xl bg-default-50 p-3 text-xs text-default-500">
             <p className="mb-2 font-semibold text-default-700">Credenciales demo:</p>

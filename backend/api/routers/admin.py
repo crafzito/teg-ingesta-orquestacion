@@ -114,7 +114,7 @@ def get_admin_summary(current_user: UserOut = Depends(require_role(_SUPERADMIN_O
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, username, full_name, role, active, last_login
+                SELECT id, username, full_name, role, active, last_login, ci
                 FROM auth.users
                 ORDER BY username
                 """
@@ -139,6 +139,7 @@ def get_admin_summary(current_user: UserOut = Depends(require_role(_SUPERADMIN_O
             role=row[3],
             active=bool(row[4]),
             last_login=row[5],
+            ci=row[6],
         )
         for row in sorted(user_rows, key=lambda row: (_ROLE_ORDER.get(row[3], 99), row[1]))
     ]
@@ -221,10 +222,11 @@ def _row_to_user_detail(row: tuple) -> UserDetail:
         active=bool(row[4]),
         last_login=row[5],
         created_at=row[6],
+        ci=row[7] if len(row) > 7 else None,
     )
 
 
-_USER_DETAIL_COLS = "id, username, full_name, role, active, last_login, created_at"
+_USER_DETAIL_COLS = "id, username, full_name, role, active, last_login, created_at, ci"
 
 
 @router.post("/users", response_model=UserDetail, status_code=status.HTTP_201_CREATED)
@@ -256,11 +258,11 @@ def create_user(
 
             cur.execute(
                 f"""
-                INSERT INTO auth.users (username, password_hash, full_name, role)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO auth.users (username, password_hash, full_name, role, ci)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING {_USER_DETAIL_COLS}
                 """,
-                (req.username, password_hash, req.full_name, req.role),
+                (req.username, password_hash, req.full_name, req.role, req.ci),
             )
             row = cur.fetchone()
 
@@ -293,6 +295,10 @@ def update_user(
         validate_password(req.password)
         sets.append("password_hash = %s")
         params.append(hash_password(req.password))
+
+    if req.ci is not None:
+        sets.append("ci = %s")
+        params.append(req.ci or None)
 
     if not sets:
         raise HTTPException(

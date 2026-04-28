@@ -14,10 +14,14 @@ CREATE TABLE IF NOT EXISTS auth.users (
   role          VARCHAR(20) NOT NULL CHECK (role IN ('superadmin','admin','analista')),
   active        BOOLEAN NOT NULL DEFAULT TRUE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_login    TIMESTAMPTZ
+  last_login    TIMESTAMPTZ,
+  ci            VARCHAR(20)
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON auth.users(username) WHERE active;
+
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS ci VARCHAR(20);
+CREATE INDEX IF NOT EXISTS idx_users_ci ON auth.users(ci) WHERE ci IS NOT NULL;
 
 -- ============================================================
 -- Sidebar configuration per role (JSONB)

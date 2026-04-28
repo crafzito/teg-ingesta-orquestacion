@@ -29,18 +29,21 @@ SEED_USERS = [
         "password": "SuperAdmin#2026",
         "full_name": "Superadministrador del Sistema",
         "role": "superadmin",
+        "ci": "12345678",
     },
     {
         "username": "admin",
         "password": "Admin#2026",
         "full_name": "Administrador Operativo",
         "role": "admin",
+        "ci": "23456789",
     },
     {
         "username": "analista",
         "password": "Analista#2026",
         "full_name": "Analista",
         "role": "analista",
+        "ci": "34567890",
     },
 ]
 
@@ -67,16 +70,17 @@ def main() -> int:
                 hashed = hash_password(user["password"])
                 cur.execute(
                     """
-                    INSERT INTO auth.users (username, password_hash, full_name, role, active)
-                    VALUES (%s, %s, %s, %s, TRUE)
+                    INSERT INTO auth.users (username, password_hash, full_name, role, active, ci)
+                    VALUES (%s, %s, %s, %s, TRUE, %s)
                     ON CONFLICT (username) DO UPDATE
                     SET
                         password_hash = EXCLUDED.password_hash,
                         full_name = EXCLUDED.full_name,
                         role = EXCLUDED.role,
-                        active = TRUE
+                        active = TRUE,
+                        ci = EXCLUDED.ci
                     """,
-                    (user["username"], hashed, user["full_name"], user["role"]),
+                    (user["username"], hashed, user["full_name"], user["role"], user.get("ci")),
                 )
                 if cur.rowcount > 0:
                     inserted += 1

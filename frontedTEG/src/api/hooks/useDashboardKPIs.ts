@@ -28,12 +28,12 @@ export function useDashboardKPIs() {
 
   const results = useQueries({
     queries: [
-      { queryKey: ['kpi', 'ventas-mes', soc], queryFn: () => fetchScalar(kpiVentasMes(soc)), staleTime: STALE_TIME },
-      { queryKey: ['kpi', 'cxc-total', soc], queryFn: () => fetchScalar(kpiCxcTotal(soc)), staleTime: STALE_TIME },
-      { queryKey: ['kpi', 'cxc-vencida', soc], queryFn: () => fetchScalar(kpiCxcVencida(soc)), staleTime: STALE_TIME },
-      { queryKey: ['kpi', 'inventario-valor', soc], queryFn: () => fetchScalar(kpiInventarioValor(soc)), staleTime: STALE_TIME },
-      { queryKey: ['kpi', 'ordenes-activas', soc], queryFn: () => fetchScalar(kpiOrdenesActivas(soc)), staleTime: STALE_TIME },
-      { queryKey: ['kpi', 'pedidos-mes', soc], queryFn: () => fetchScalar(kpiPedidosMes(soc)), staleTime: STALE_TIME },
+      { queryKey: ['kpi', 'ventas-mes', soc], queryFn: () => fetchScalar(kpiVentasMes(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
+      { queryKey: ['kpi', 'cxc-total', soc], queryFn: () => fetchScalar(kpiCxcTotal(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
+      { queryKey: ['kpi', 'cxc-vencida', soc], queryFn: () => fetchScalar(kpiCxcVencida(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
+      { queryKey: ['kpi', 'inventario-valor', soc], queryFn: () => fetchScalar(kpiInventarioValor(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
+      { queryKey: ['kpi', 'ordenes-activas', soc], queryFn: () => fetchScalar(kpiOrdenesActivas(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
+      { queryKey: ['kpi', 'pedidos-mes', soc], queryFn: () => fetchScalar(kpiPedidosMes(soc)), staleTime: STALE_TIME, refetchOnMount: 'always' as const },
     ],
   })
 
@@ -61,31 +61,37 @@ export function useDashboardCharts() {
         queryKey: ['chart', 'ventas-mensuales', soc],
         queryFn: () => fetchRows<{ mes: string; sociedad_1000?: number; sociedad_1200?: number; sociedad_1300?: number; total?: number }>(chartVentasMensuales(soc)),
         staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
       },
       {
         queryKey: ['chart', 'aging-cxc', soc],
         queryFn: () => fetchRows<{ bucket: string; total: number }>(chartAgingCxc(soc)),
         staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
       },
       {
         queryKey: ['chart', 'top-clientes', soc],
         queryFn: () => fetchRows<{ nombre: string; total: number }>(chartTopClientes(soc)),
         staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
       },
       {
         queryKey: ['chart', 'ventas-sociedad', soc],
         queryFn: () => fetchRows<{ sociedad: string; mes_actual: number; mes_anterior: number }>(chartVentasSociedad(soc)),
         staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
       },
       {
         queryKey: ['chart', 'pedidos-status', soc],
         queryFn: () => fetchRows<{ nombre: string; total: number }>(chartPedidosStatus(soc)),
         staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
       },
       {
         queryKey: ['chart', 'ordenes-centro', soc],
         queryFn: () => fetchRows<{ centro: string; abiertas: number; liberadas: number; cerradas: number }>(chartOrdenesCentro(soc)),
         staleTime: STALE_TIME,
+        refetchOnMount: 'always' as const,
       },
     ],
   })

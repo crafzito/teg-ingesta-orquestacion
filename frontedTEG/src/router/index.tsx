@@ -10,6 +10,7 @@ import { ProtectedRoute } from './ProtectedRoute'
 import { appRoutes } from './routes'
 
 const ManualPage = lazy(() => import('../pages/ManualPage'))
+const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -25,6 +26,14 @@ const router = createBrowserRouter(
 
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/forgot-password"
+          element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <ForgotPasswordPage />
+            </Suspense>
+          }
+        />
       </Route>
 
       <Route element={<ProtectedRoute />}>

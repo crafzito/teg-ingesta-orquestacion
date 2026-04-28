@@ -243,6 +243,7 @@ class AdminUserItem(BaseModel):
     role: str
     active: bool
     last_login: datetime.datetime | None
+    ci: str | None = None
 
 
 class AdminProtectedAction(BaseModel):
@@ -298,12 +299,14 @@ class CreateUserRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=200)
     full_name: str = Field(..., min_length=1, max_length=200)
     role: str = Field(..., min_length=1, max_length=20)
+    ci: str | None = Field(default=None, max_length=20)
 
 
 class UpdateUserRequest(BaseModel):
     full_name: str | None = None
     role: str | None = None
     password: str | None = None
+    ci: str | None = None
 
 
 class UserDetail(BaseModel):
@@ -314,6 +317,18 @@ class UserDetail(BaseModel):
     active: bool
     last_login: datetime.datetime | None
     created_at: datetime.datetime | None
+    ci: str | None = None
+
+
+class PasswordResetRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    ci: str = Field(..., min_length=1, max_length=20)
+    new_password: str = Field(..., min_length=1, max_length=200)
+
+
+class PasswordResetResponse(BaseModel):
+    status: str
+    message: str
 
 
 class SidebarConfigUpdate(BaseModel):

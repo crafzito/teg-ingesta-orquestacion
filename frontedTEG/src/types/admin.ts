@@ -7,6 +7,7 @@ export interface AdminUser {
   role: UserRole
   active: boolean
   last_login: string | null
+  ci: string | null
 }
 
 export interface AdminProtectedAction {

@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card, CardBody, Input, Chip } from '@heroui/react'
-import { ArrowLeft, BookOpen, LogIn, Search, X, ZoomIn } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  ArrowLeft,
+  BookOpen,
+  Info,
+  LogIn,
+  Search,
+  ShieldAlert,
+  X,
+  ZoomIn,
+  CheckCircle2,
+} from 'lucide-react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { useAuthStore } from '../stores/authStore'
 
@@ -88,6 +99,7 @@ const SECTIONS: ManualSection[] = [
             type: 'list',
             items: [
               'Crear, editar, restablecer contraseña y desactivar usuarios.',
+              'Asignar la cédula de identidad de cada usuario (necesaria para el reset de contraseña self-service).',
               'Configurar qué secciones del menú ve cada tipo de usuario desde la pestaña Configuración.',
               'Revisar los indicadores del sistema (usuarios activos, vistas protegidas, vistas personalizadas, directorios monitoreados).',
               'Acceder a todas las demás pantallas (Dashboard, Ventas, Finanzas, Operaciones, Maestros, Monitor ETL).',
@@ -122,7 +134,7 @@ const SECTIONS: ManualSection[] = [
             items: [
               'Ve el Dashboard con los indicadores principales.',
               'Navega los módulos de Ventas, Finanzas, Operaciones y Maestros.',
-              'Aplica el filtro de Sociedad para acotar la información.',
+              'Aplica los filtros del panel (Sociedad, Período y, donde aplica, Centro) para acotar la información.',
               'Usa la caja de búsqueda de cada tabla para encontrar registros específicos.',
             ],
           },
@@ -174,9 +186,10 @@ const SECTIONS: ManualSection[] = [
             ],
           },
           'Si las credenciales son incorrectas aparecerá el mensaje "Credenciales invalidas" y podrá reintentar.',
+          'Debajo del formulario también encontrará el enlace "¿Olvidaste tu contraseña?" para iniciar el flujo de restablecimiento por su cuenta (ver sección 3.5).',
         ],
         images: [
-          { src: IMG('3_2_login.png'), caption: 'Pantalla de inicio de sesión' },
+          { src: IMG('v2_login.png'), caption: 'Pantalla de inicio de sesión con el enlace "¿Olvidaste tu contraseña?"' },
           { src: IMG('3_2_login_filled.png'), caption: 'Formulario completado, listo para enviar' },
         ],
       },
@@ -194,6 +207,44 @@ const SECTIONS: ManualSection[] = [
         title: 'Cerrar sesión',
         body: [
           'En la esquina superior derecha de cualquier pantalla aparece su nombre de usuario, el rol ("GOBERNANZA TOTAL" para superadministrador) y el botón "Cerrar sesion". Pulsarlo lo lleva de vuelta al login.',
+        ],
+      },
+      {
+        id: 'sec-3-5',
+        number: '3.5',
+        title: 'Restablecer mi contraseña (self-service)',
+        body: [
+          'Si olvidó su contraseña, no es necesario contactar al superadministrador para que la genere por usted: la Aplicación incluye un flujo de auto-restablecimiento accesible desde el enlace "¿Olvidaste tu contraseña?" en la pantalla de login.',
+          'El flujo verifica su identidad con dos datos que solo usted conoce: su nombre de usuario y su cédula de identidad. Si ambos coinciden con los registrados, podrá establecer una nueva contraseña inmediatamente.',
+          'Pasos:',
+          {
+            type: 'list',
+            items: [
+              'En la pantalla de login pulse "¿Olvidaste tu contraseña?".',
+              'Escriba su nombre de usuario y su cédula de identidad.',
+              'Escriba la nueva contraseña y vuelva a escribirla en "Confirmar contraseña" para evitar errores de tipeo.',
+              'Pulse el botón para confirmar el cambio.',
+              'Vuelva al login y entre con la nueva contraseña.',
+            ],
+          },
+          'La nueva contraseña debe cumplir las mismas reglas que se piden al crear un usuario:',
+          {
+            type: 'list',
+            items: [
+              'Al menos 8 caracteres.',
+              'Al menos una letra mayúscula.',
+              'Al menos una letra minúscula.',
+              'Al menos un número.',
+            ],
+          },
+          {
+            type: 'warn',
+            text: 'La cédula registrada en su perfil debe coincidir exactamente con la que ingresa (sin puntos, guiones ni espacios extra, tal como se la cargó el superadministrador). Si no tiene cédula registrada, este flujo no funcionará: pídale al superadministrador que la asigne en el panel de Administración (sección 12.1).',
+          },
+        ],
+        images: [
+          { src: IMG('v2_forgot_password_empty.png'), caption: 'Formulario de restablecimiento: usuario, cédula y nueva contraseña' },
+          { src: IMG('v2_forgot_password_filled.png'), caption: 'Formulario completado, listo para confirmar el cambio' },
         ],
       },
     ],
@@ -227,21 +278,24 @@ const SECTIONS: ManualSection[] = [
       {
         id: 'sec-4-2',
         number: '4.2',
-        title: 'Filtro por Sociedad',
+        title: 'Filtros del panel',
         body: [
-          'Casi todas las pantallas cuentan con un selector de Sociedad en la parte superior derecha. Al abrirlo puede elegir:',
+          'En la parte superior de cada pantalla del panel aparece una barra de filtros (FilterBar) que aplica de forma inmediata a KPIs, gráficos y tablas. La barra agrupa hasta tres filtros, según la pantalla:',
           {
             type: 'list',
             items: [
-              'Todas las Sociedades (consolidado)',
-              'Pharsana (Consumo) — Sociedad 1000',
-              'Ampofrasca (Empaque) — Sociedad 1200',
-              'Proy. PET (Empaque) — Sociedad 1300',
+              'Sociedad — segmented control con cuatro chips: Todas, Pharsana (1000), Ampofrasca (1200) y Proy. PET (1300). Se selecciona haciendo clic en la opción deseada (a diferencia del antiguo dropdown).',
+              'Período — segmented control con cuatro opciones: Mes (mes en curso), Trim. (trimestre actual), Año (año actual) y Todo (sin restricción de fecha).',
+              'Centro — disponible únicamente en Inventario y Producción. Permite acotar a un centro de trabajo específico: Todos, 1000, 1001, 1002, 1200 o 1300.',
             ],
           },
-          'El cambio se aplica de inmediato a KPIs, gráficos y tablas de la pantalla.',
+          'Los filtros son acumulativos: si elige Pharsana + Trim., verá únicamente la información de la sociedad 1000 dentro del trimestre actual. El cambio se refleja en milisegundos en todos los componentes de la pantalla.',
+          {
+            type: 'note',
+            text: 'Si un KPI o gráfico aparece en cero después de aplicar filtros, es porque no hay datos para esa combinación de Sociedad/Período/Centro, no porque la Aplicación tenga un error.',
+          },
         ],
-        images: [{ src: IMG('4_2_filtro_sociedad.png'), caption: 'Selector de Sociedad desplegado' }],
+        images: [{ src: IMG('v2_filterbar.png'), caption: 'Barra de filtros: Sociedad (chips), Período (Mes/Trim./Año/Todo) y, donde aplica, Centro' }],
       },
       {
         id: 'sec-4-3',
@@ -259,36 +313,57 @@ const SECTIONS: ManualSection[] = [
     number: '5',
     title: 'Dashboard principal',
     body: [
-      'El Dashboard es la primera pantalla que ve al entrar. Muestra un resumen ejecutivo con seis KPIs arriba (Ventas del Mes, CxC Total, CxC Vencida, Inventario Valorizado, Órdenes Activas, Pedidos del Mes) y tres pestañas con gráficos: Ventas, Finanzas y Operaciones.',
+      'El Dashboard es la primera pantalla que ve al entrar. En la parte superior aparece la barra de filtros (Sociedad y Período). Justo debajo encontrará seis KPIs uniformes —misma altura, icono coloreado, valor grande y, donde aplica, una variación porcentual o sparkline— que resumen el negocio: Ventas del Mes, CxC Total, CxC Vencida, Inventario Valorizado, Órdenes Activas y Pedidos del Mes.',
+      'Más abajo, tres pestañas (Ventas, Finanzas y Operaciones) agrupan los gráficos. Cada pestaña incorpora visualizaciones nuevas que antes no existían.',
     ],
-    images: [{ src: IMG('5_0_dashboard_full.png'), caption: 'Vista completa del Dashboard con KPIs y pestaña de Ventas activa' }],
+    images: [{ src: IMG('v2_dashboard_full.png'), caption: 'Dashboard nuevo con FilterBar, KPIs uniformes y la pestaña de Ventas activa (7 gráficos en total)' }],
     subsections: [
       {
         id: 'sec-5-1',
         number: '5.1',
         title: 'Pestaña Ventas',
         body: [
-          'Contiene cuatro gráficos: Ventas Mensuales (últimos 12 meses, líneas por sociedad), Ventas por Sociedad (Actual vs Anterior), Top 10 Clientes y Tendencia Ventas por Sociedad.',
+          'Reúne los gráficos de comportamiento comercial. Además de los gráficos clásicos (Ventas Mensuales, Ventas por Sociedad, Top 10 Clientes y Tendencia por Sociedad), se incorporan tres visualizaciones nuevas:',
+          {
+            type: 'list',
+            items: [
+              'Composición por Sociedad — gráfico de dona que muestra el peso porcentual de cada sociedad en la facturación del período.',
+              'Tickets por Sociedad — barras con la cantidad de facturas emitidas por sociedad.',
+              'Ventas vs CxC por Sociedad — barras agrupadas que comparan, por sociedad, lo facturado contra el saldo pendiente de cobro.',
+            ],
+          },
         ],
-        images: [{ src: IMG('5_1_dashboard_ventas.png'), caption: 'Pestaña de Ventas del Dashboard' }],
+        images: [{ src: IMG('5_1_dashboard_ventas.png'), caption: 'Pestaña de Ventas con los gráficos clásicos y los tres nuevos por sociedad' }],
       },
       {
         id: 'sec-5-2',
         number: '5.2',
         title: 'Pestaña Finanzas',
         body: [
-          'Muestra Antigüedad CxC (gráfico de dona) y CxC Total vs Vencida (barras horizontales por tramo: No vencido, 1-15, 16-30, 31-60, 61-90, 91+ días).',
+          'Muestra Antigüedad CxC (dona) y CxC Total vs Vencida (barras horizontales por tramo: No vencido, 1-15, 16-30, 31-60, 61-90, 91+ días). En esta pestaña se incorpora también:',
+          {
+            type: 'list',
+            items: [
+              'Ratio CxC Vencida — gauge (medidor circular) que muestra el porcentaje de la cartera total que está vencida. Sirve como semáforo financiero: cuanto más cerca de 100%, más comprometida está la cobranza.',
+            ],
+          },
         ],
-        images: [{ src: IMG('5_2_dashboard_finanzas.png'), caption: 'Pestaña de Finanzas con antigüedad de CxC' }],
+        images: [{ src: IMG('v2_dashboard_finanzas.png'), caption: 'Pestaña Finanzas con el nuevo gauge "Ratio CxC Vencida"' }],
       },
       {
         id: 'sec-5-3',
         number: '5.3',
         title: 'Pestaña Operaciones',
         body: [
-          'Presenta Pedidos por Estatus (dona) y Órdenes por Centro y Estatus (barras apiladas por centro de producción 1000, 1002, 1200, 1300).',
+          'Conserva Pedidos por Estatus (dona) y Órdenes por Centro y Estatus (barras apiladas), y suma:',
+          {
+            type: 'list',
+            items: [
+              'Órdenes Activas vs Cerradas por Centro — barras agrupadas que comparan, en cada centro de producción, la cantidad de órdenes vivas frente a las cerradas, útil para detectar acumulación de trabajo en curso.',
+            ],
+          },
         ],
-        images: [{ src: IMG('5_3_dashboard_operaciones.png'), caption: 'Pestaña de Operaciones' }],
+        images: [{ src: IMG('v2_dashboard_operaciones.png'), caption: 'Pestaña Operaciones con el nuevo gráfico Órdenes Activas vs Cerradas por Centro' }],
       },
       {
         id: 'sec-5-4',
@@ -304,16 +379,19 @@ const SECTIONS: ManualSection[] = [
     id: 'sec-6',
     number: '6',
     title: 'Módulo de Ventas',
-    body: ['Pantalla de análisis de facturación. Cada fila de la tabla representa una línea de factura (combinación de factura + producto).'],
+    body: [
+      'Pantalla de análisis de facturación. En la parte superior se muestra una fila de KPIs uniformes (Ventas, Tickets, Ticket promedio, Clientes activos) seguida de la barra de filtros (Sociedad y Período). Cada fila de la tabla representa una línea de factura (combinación de factura + producto).',
+    ],
+    images: [{ src: IMG('v2_ventas.png'), caption: 'Pantalla de Ventas: fila de KPIs + FilterBar + gráficos + tabla de detalle' }],
     subsections: [
       {
         id: 'sec-6-1',
         number: '6.1',
         title: 'Gráficos principales',
         body: [
-          'En la parte superior encontrará cuatro visualizaciones: Ventas Mensuales, Top Clientes (3 meses), Ritmo de venta (mes actual vs anterior con ticket promedio) y Top Productos por Venta.',
+          'Debajo de los KPIs aparecen los gráficos: Ventas Mensuales, Top Clientes (3 meses), Ritmo de venta (mes actual vs anterior con ticket promedio) y Top Productos por Venta.',
         ],
-        images: [{ src: IMG('6_1_ventas_kpis_graficos.png'), caption: 'Bloque superior de Ventas: 4 gráficos' }],
+        images: [{ src: IMG('6_1_ventas_kpis_graficos.png'), caption: 'Bloque de gráficos en la pantalla de Ventas' }],
       },
       {
         id: 'sec-6-2',
@@ -338,7 +416,7 @@ const SECTIONS: ManualSection[] = [
         number: '7.1',
         title: 'Cuentas por Cobrar (CxC)',
         body: [
-          'Tres gráficos superiores: Antigüedad CxC (dona), Top Clientes por Saldo (barras) y Antigüedad por Monto (barras horizontales).',
+          'La pantalla abre con una fila de KPIs uniformes (Total CxC, CxC vencida, % vencido, Clientes con saldo) y la barra de filtros. Debajo, tres gráficos: Antigüedad CxC (dona), Top Clientes por Saldo (barras) y Antigüedad por Monto (barras horizontales).',
           'Tabla inferior "Detalle CxC" con Sociedad, Cliente, Documento, Fecha Doc, Vencimiento, Valor, Días Vencido y Total Vencido.',
           'Tramos de antigüedad utilizados:',
           {
@@ -357,7 +435,7 @@ const SECTIONS: ManualSection[] = [
             text: 'Los datos reflejan el último archivo procesado desde SAP. Si hoy se recibió un pago pero aún no se cargó el archivo actualizado, el saldo seguirá apareciendo.',
           },
         ],
-        images: [{ src: IMG('7_1_cxc.png'), caption: 'Pantalla de Cuentas por Cobrar' }],
+        images: [{ src: IMG('v2_cxc.png'), caption: 'Pantalla de Cuentas por Cobrar con KPIs + FilterBar' }],
       },
       {
         id: 'sec-7-2',
@@ -376,7 +454,7 @@ const SECTIONS: ManualSection[] = [
     id: 'sec-8',
     number: '8',
     title: 'Módulo de Operaciones',
-    body: ['Tres pantallas: Pedidos, Producción e Inventario.'],
+    body: ['Tres pantallas: Pedidos, Producción e Inventario. En Producción e Inventario, la barra de filtros incluye un selector adicional de Centro.'],
     subsections: [
       {
         id: 'sec-8-1',
@@ -393,7 +471,7 @@ const SECTIONS: ManualSection[] = [
         number: '8.2',
         title: 'Producción',
         body: [
-          'Dos gráficos: Órdenes por Estatus (Liberados, Cerrado técnicamente, Abiertos) y Órdenes por Centro.',
+          'La barra de filtros incluye Sociedad, Período y Centro (Todos / 1000 / 1001 / 1002 / 1200 / 1300). Dos gráficos: Órdenes por Estatus (Liberados, Cerrado técnicamente, Abiertos) y Órdenes por Centro.',
           'Tabla "Detalle de Órdenes" con Centro, Orden, Material, Producto, Cant. Orden, Cant. Recibida, Estatus, Inicio y Fin. Una orden con fecha de fin vencida y cantidad recibida baja indica atraso.',
         ],
         images: [{ src: IMG('8_2_produccion.png'), caption: 'Pantalla de Órdenes de Producción' }],
@@ -403,10 +481,10 @@ const SECTIONS: ManualSection[] = [
         number: '8.3',
         title: 'Inventario',
         body: [
-          'Tres gráficos: Inventario por Centro (barras), Top Materiales por Valor (barras horizontales) y Distribución por Centro (dona).',
+          'La barra de filtros incluye Sociedad, Período y Centro. Tres gráficos: Inventario por Centro (barras), Top Materiales por Valor (barras horizontales) y Distribución por Centro (dona).',
           'Tabla "Detalle de Inventario" con Centro, Almacén, Material, Producto, Tipo Inv., Stock, Valor y Unidad. Un material puede aparecer múltiples veces si está en distintos almacenes o tipos de inventario.',
         ],
-        images: [{ src: IMG('8_3_inventario.png'), caption: 'Pantalla de Inventario' }],
+        images: [{ src: IMG('v2_inventario.png'), caption: 'Pantalla de Inventario con filtro de Centro habilitado' }],
       },
     ],
   },
@@ -571,9 +649,10 @@ const SECTIONS: ManualSection[] = [
         number: '12.1',
         title: 'Gestión de usuarios',
         body: [
-          'La pestaña "Usuarios" muestra una tabla con Usuario, Nombre, Rol, Estado, Último acceso y Acciones (Editar, Restablecer contraseña, Desactivar).',
+          'La pestaña "Usuarios" muestra una tabla con Usuario, Nombre, Cédula, Rol, Estado, Último acceso y Acciones (Editar, Restablecer contraseña, Desactivar).',
+          'La columna Cédula es nueva: muestra el documento de identidad asociado a cada usuario. Es el dato que el sistema usa para verificar la identidad cuando alguien hace un reset de contraseña self-service (ver 3.5). Si la cédula está vacía, ese usuario no podrá auto-restablecer su contraseña hasta que el superadministrador se la asigne.',
         ],
-        images: [{ src: IMG('12_1_grid_usuarios.png'), caption: 'Tabla de usuarios del sistema' }],
+        images: [{ src: IMG('v2_admin_users_with_ci.png'), caption: 'Tabla de usuarios mostrando la columna Cédula' }],
       },
       {
         id: 'sec-12-1-1',
@@ -585,12 +664,17 @@ const SECTIONS: ManualSection[] = [
             type: 'list',
             items: [
               'Nombre de usuario (obligatorio, único).',
+              'Cédula de identidad (obligatoria — habilita el reset self-service del usuario).',
               'Contraseña (obligatoria, con validaciones visibles: al menos 8 caracteres, una mayúscula, una minúscula, un número).',
               'Nombre completo.',
               'Rol (Superadministrador, Administrador o Analista).',
             ],
           },
           'El botón "Crear" permanece deshabilitado hasta que la contraseña cumpla todas las reglas.',
+          {
+            type: 'note',
+            text: 'Cargue la cédula tal como aparece en el documento del usuario. Ese mismo valor es el que la persona deberá ingresar si más adelante usa "¿Olvidaste tu contraseña?".',
+          },
         ],
         images: [
           { src: IMG('12_1_crear_usuario_vacio.png'), caption: 'Formulario vacío — botón "Crear" deshabilitado' },
@@ -604,18 +688,20 @@ const SECTIONS: ManualSection[] = [
         number: '12.1.2',
         title: 'Editar un usuario',
         body: [
-          'El botón de lápiz abre el formulario de edición. El nombre de usuario no se puede cambiar; sí puede modificarse Nombre completo, Rol y, opcionalmente, establecer una nueva contraseña.',
+          'El botón de lápiz abre el formulario de edición. El nombre de usuario no se puede cambiar; sí pueden modificarse Nombre completo, Cédula de identidad, Rol y, opcionalmente, una nueva contraseña.',
+          'Si el usuario aún no tenía cédula registrada (cuentas creadas antes de esta funcionalidad), este es el lugar para asignársela y habilitarle el reset self-service.',
         ],
-        images: [{ src: IMG('12_1_editar_usuario.png'), caption: 'Diálogo de edición de usuario' }],
+        images: [{ src: IMG('v2_admin_edit_user_with_ci.png'), caption: 'Diálogo "Editar Usuario" con el campo "Cédula de identidad"' }],
       },
       {
         id: 'sec-12-1-3',
         number: '12.1.3',
         title: 'Restablecer contraseña',
         body: [
-          'El botón de llave abre un diálogo para generar una nueva contraseña. Se pide escribir la contraseña y confirmarla; ambas deben coincidir y cumplir las mismas reglas que al crear el usuario.',
+          'El botón de llave abre un diálogo para generar una nueva contraseña en nombre del usuario. Se pide escribirla y confirmarla; ambas deben coincidir y cumplir las mismas reglas que al crear el usuario (≥8 caracteres, mayúscula, minúscula, número).',
+          'Use esta opción cuando el usuario no pueda hacer el reset self-service (por ejemplo, porque no tiene cédula registrada o no la recuerda).',
         ],
-        images: [{ src: IMG('12_1_reset_password.png'), caption: 'Diálogo para restablecer contraseña' }],
+        images: [{ src: IMG('v2_admin_reset_password.png'), caption: 'Diálogo "Restablecer contraseña" con las reglas de validación visibles' }],
       },
       {
         id: 'sec-12-1-4',
@@ -649,6 +735,7 @@ const SECTIONS: ManualSection[] = [
             type: 'list',
             items: [
               'Mantenga al menos dos superadministradores activos para evitar quedar sin acceso.',
+              'Cargue la cédula de identidad de cada usuario al crearlo: sin ella no podrán usar el reset self-service.',
               'Cambie las contraseñas periódicamente, especialmente las de superadministrador.',
               'Revise trimestralmente los usuarios sin acceso registrado y desactívelos.',
               'No asigne rol de administrador a personas que solo necesitan consultar datos; para eso está el rol de analista.',
@@ -669,7 +756,7 @@ const SECTIONS: ManualSection[] = [
         number: '13.1',
         title: 'Problemas de acceso',
         body: [
-          '«No puedo iniciar sesión»: verifique usuario/contraseña (distingue mayúsculas). Si olvidó su contraseña, pídale al superadministrador que la restablezca.',
+          '«No puedo iniciar sesión»: verifique usuario/contraseña (distingue mayúsculas). Si olvidó su contraseña, use "¿Olvidaste tu contraseña?" en el login (sección 3.5) o pídale al superadministrador que la restablezca.',
           '«Veo la pantalla Acceso restringido»: su rol no tiene permiso para esa sección. Por ejemplo, un analista no puede ver el Monitor ETL ni Administración. Use el botón "Volver al dashboard" para regresar.',
           '«La sesión se cerró sola»: es normal, vuelva a ingresar con sus credenciales.',
         ],
@@ -706,6 +793,16 @@ const SECTIONS: ManualSection[] = [
           '«Quiero eliminar un usuario pero no aparece la opción»: el sistema no permite eliminar, solo desactivar. La cuenta puede reactivarse en cualquier momento.',
         ],
       },
+      {
+        id: 'sec-13-5',
+        number: '13.5',
+        title: 'Problemas con el reset self-service',
+        body: [
+          '«El sistema dice ‘Datos no coinciden’ al intentar restablecer mi contraseña»: el usuario o la cédula no coinciden con lo registrado. Verifique que la cédula esté escrita exactamente como se la cargó el superadministrador (sin puntos, guiones ni espacios extra). Si persiste, pídale al superadministrador que revise su perfil en /administracion y le confirme la cédula que tiene cargada.',
+          '«No tengo cédula registrada»: las cuentas creadas antes de esta funcionalidad pueden no tener cédula. Contacte al superadministrador para que se la asigne desde el panel de Administración (sección 12.1.2). Hasta entonces, el reset self-service no funcionará y deberá pedirle al superadministrador un reset manual (sección 12.1.3).',
+          '«La nueva contraseña es rechazada»: debe cumplir las cuatro reglas (≥8 caracteres, mayúscula, minúscula, número). El formulario muestra cuál regla está fallando.',
+        ],
+      },
     ],
   },
 ]
@@ -727,14 +824,30 @@ function flatSearchIndex(sections: ManualSection[]): Array<{ id: string; number:
   return out
 }
 
-function Body({ body }: { body: ManualBlock[] }) {
+function highlight(text: string, query: string): React.ReactNode {
+  const q = query.trim()
+  if (!q) return text
+  const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig')
+  const parts = text.split(re)
+  return parts.map((p, i) =>
+    re.test(p) ? (
+      <mark key={i} className="rounded bg-warning-200 text-warning-900 px-0.5">
+        {p}
+      </mark>
+    ) : (
+      <span key={i}>{p}</span>
+    ),
+  )
+}
+
+function Body({ body, query }: { body: ManualBlock[]; query: string }) {
   return (
     <>
       {body.map((item, i) => {
         if (typeof item === 'string') {
           return (
             <p key={i} className="text-sm md:text-base text-default-700 leading-relaxed mb-4">
-              {item}
+              {highlight(item, query)}
             </p>
           )
         }
@@ -742,26 +855,34 @@ function Body({ body }: { body: ManualBlock[] }) {
           return (
             <ul key={i} className="list-disc pl-6 mb-4 space-y-1.5 text-sm md:text-base text-default-700">
               {item.items.map((it, j) => (
-                <li key={j}>{it}</li>
+                <li key={j}>{highlight(it, query)}</li>
               ))}
             </ul>
           )
         }
         if (item.type === 'note') {
           return (
-            <div key={i} className="mb-4 rounded-lg border-l-4 border-primary bg-primary-50 px-4 py-3">
+            <div
+              key={i}
+              className="mb-4 flex gap-3 rounded-lg border-l-4 border-primary-400 bg-primary-50 px-4 py-3"
+            >
+              <Info className="h-5 w-5 text-primary-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-default-700">
                 <span className="font-semibold text-primary-700">Nota: </span>
-                {item.text}
+                {highlight(item.text, query)}
               </p>
             </div>
           )
         }
         return (
-          <div key={i} className="mb-4 rounded-lg border-l-4 border-warning bg-warning-50 px-4 py-3">
+          <div
+            key={i}
+            className="mb-4 flex gap-3 rounded-lg border-l-4 border-warning-400 bg-warning-50 px-4 py-3"
+          >
+            <ShieldAlert className="h-5 w-5 text-warning-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-default-700">
               <span className="font-semibold text-warning-700">Importante: </span>
-              {item.text}
+              {highlight(item.text, query)}
             </p>
           </div>
         )
@@ -776,7 +897,7 @@ function Images({ images, onOpen }: { images?: ManualImage[]; onOpen: (src: stri
     <div className="flex flex-col items-center gap-8 my-6">
       {images.map((img) => (
         <figure key={img.src} className="w-full max-w-4xl flex flex-col items-center">
-          <div className="relative w-full overflow-hidden rounded-xl border border-default-200 shadow-lg bg-default-50 group">
+          <div className="relative w-full overflow-hidden rounded-xl border border-default-200 shadow-sm bg-default-50 group">
             <img
               src={img.src}
               alt={img.caption ?? ''}
@@ -795,7 +916,7 @@ function Images({ images, onOpen }: { images?: ManualImage[]; onOpen: (src: stri
             </button>
           </div>
           {img.caption && (
-            <figcaption className="mt-3 text-center text-xs md:text-sm text-default-500 italic max-w-3xl">
+            <figcaption className="mt-3 text-center text-xs text-default-500 italic max-w-3xl">
               {img.caption}
             </figcaption>
           )}
@@ -805,24 +926,59 @@ function Images({ images, onOpen }: { images?: ManualImage[]; onOpen: (src: stri
   )
 }
 
-function Section({ s, level = 0, onOpenImage }: { s: ManualSection; level?: number; onOpenImage: (src: string, caption?: string) => void }) {
+function Section({
+  s,
+  level = 0,
+  query,
+  onOpenImage,
+}: {
+  s: ManualSection
+  level?: number
+  query: string
+  onOpenImage: (src: string, caption?: string) => void
+}) {
   const HeadingTag = (level === 0 ? 'h2' : level === 1 ? 'h3' : 'h4') as keyof JSX.IntrinsicElements
   const headingClass =
     level === 0
-      ? 'text-2xl md:text-3xl font-bold text-foreground border-b border-default-200 pb-2'
+      ? 'text-2xl md:text-3xl font-bold tracking-tight text-foreground border-b border-default-200 pb-3'
       : level === 1
-        ? 'text-xl md:text-2xl font-semibold text-foreground'
+        ? 'text-xl md:text-2xl font-semibold tracking-tight text-foreground'
         : 'text-base md:text-lg font-semibold text-foreground'
-  const sectionSpacing = level === 0 ? 'mb-12 mt-8 first:mt-0' : level === 1 ? 'mb-8 mt-6' : 'mb-6 mt-4'
+  const sectionSpacing = level === 0 ? 'mb-12 mt-2 first:mt-0' : level === 1 ? 'mb-8 mt-8' : 'mb-6 mt-5'
+
+  if (level === 0) {
+    return (
+      <Card
+        id={s.id}
+        shadow="sm"
+        className={`${sectionSpacing} scroll-mt-24 border border-default-200`}
+      >
+        <CardBody className="p-6 md:p-10">
+          <HeadingTag className={`${headingClass} mb-5 flex items-baseline gap-3`}>
+            <span className="text-primary font-mono">{s.number}</span>
+            <span>{highlight(s.title, query)}</span>
+          </HeadingTag>
+          <Body body={s.body} query={query} />
+          <Images images={s.images} onOpen={onOpenImage} />
+          {s.subsections?.map((sub) => (
+            <Section key={sub.id} s={sub} level={level + 1} query={query} onOpenImage={onOpenImage} />
+          ))}
+        </CardBody>
+      </Card>
+    )
+  }
+
   return (
     <section id={s.id} className={`${sectionSpacing} scroll-mt-24`}>
       <HeadingTag className={`${headingClass} mb-4 flex items-baseline gap-3`}>
         <span className="text-primary font-mono">{s.number}</span>
-        <span>{s.title}</span>
+        <span>{highlight(s.title, query)}</span>
       </HeadingTag>
-      <Body body={s.body} />
+      <Body body={s.body} query={query} />
       <Images images={s.images} onOpen={onOpenImage} />
-      {s.subsections?.map((sub) => <Section key={sub.id} s={sub} level={level + 1} onOpenImage={onOpenImage} />)}
+      {s.subsections?.map((sub) => (
+        <Section key={sub.id} s={sub} level={level + 1} query={query} onOpenImage={onOpenImage} />
+      ))}
     </section>
   )
 }
@@ -871,7 +1027,12 @@ function Lightbox({ src, caption, onClose }: { src: string; caption?: string; on
 export default function ManualPage() {
   const [query, setQuery] = useState('')
   const [lightbox, setLightbox] = useState<{ src: string; caption?: string } | null>(null)
+  const [activeId, setActiveId] = useState<string>(SECTIONS[0]?.id ?? '')
+  const [visited, setVisited] = useState<Set<string>>(() => new Set())
+  const [progress, setProgress] = useState(0)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const mainRef = useRef<HTMLDivElement | null>(null)
+
   const index = useMemo(() => flatSearchIndex(SECTIONS), [])
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -879,26 +1040,91 @@ export default function ManualPage() {
     return index.filter((e) => e.text.toLowerCase().includes(q)).slice(0, 30)
   }, [query, index])
 
-  const jumpTo = (id: string) => {
+  // Track scroll progress + active top-level section
+  useEffect(() => {
+    const onScroll = () => {
+      const doc = document.documentElement
+      const scrollTop = doc.scrollTop || document.body.scrollTop
+      const scrollHeight = doc.scrollHeight - doc.clientHeight
+      const pct = scrollHeight > 0 ? Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100)) : 0
+      setProgress(pct)
+
+      // Determine active top-level section: the last whose top is above the viewport center
+      let current = SECTIONS[0]?.id ?? ''
+      const trigger = window.innerHeight * 0.3
+      for (const s of SECTIONS) {
+        const el = document.getElementById(s.id)
+        if (!el) continue
+        const rect = el.getBoundingClientRect()
+        if (rect.top - trigger <= 0) current = s.id
+        else break
+      }
+      setActiveId(current)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const jumpTo = useCallback((id: string) => {
     const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setVisited((prev) => {
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
+    }
+  }, [])
+
+  // Mark current section as visited on scroll
+  useEffect(() => {
+    if (activeId) {
+      setVisited((prev) => {
+        if (prev.has(activeId)) return prev
+        const next = new Set(prev)
+        next.add(activeId)
+        return next
+      })
+    }
+  }, [activeId])
+
+  const tocItems = matches
+    ? matches.map((e) => ({ id: e.id, number: e.number, title: e.title, topId: e.id.split('-').slice(0, 2).join('-') }))
+    : SECTIONS.map((s) => ({ id: s.id, number: s.number, title: s.title, topId: s.id }))
 
   const content = (
     <>
+      {/* Sticky reading-progress bar */}
+      <div className="sticky top-0 z-40 -mx-4 md:-mx-0 mb-4 h-1 bg-default-100 overflow-hidden rounded-full">
+        <motion.div
+          className="h-full bg-gradient-to-r from-primary to-secondary"
+          style={{ width: `${progress}%` }}
+          initial={false}
+          animate={{ width: `${progress}%` }}
+          transition={{ ease: 'linear', duration: 0.05 }}
+        />
+      </div>
+
       <PageHeader
         title="Manual de Usuario"
         description="Aplicación de integración y orquestación de datos para analítica gerencial en proyectos PET"
         actions={
-          <Chip startContent={<BookOpen className="h-4 w-4" />} variant="flat" color="primary">
-            {SECTIONS.length} capítulos
-          </Chip>
+          <div className="flex items-center gap-2">
+            <Chip startContent={<BookOpen className="h-4 w-4" />} variant="flat" color="primary">
+              {SECTIONS.length} capítulos
+            </Chip>
+            <Chip variant="flat" color="success" startContent={<CheckCircle2 className="h-4 w-4" />}>
+              {visited.size}/{SECTIONS.length} visitados
+            </Chip>
+          </div>
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-        <aside className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-          <Card>
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+        <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+          <Card shadow="sm" className="border border-default-200">
             <CardBody className="p-3">
               <Input
                 size="sm"
@@ -911,17 +1137,34 @@ export default function ManualPage() {
                 className="mb-3"
               />
               <nav className="text-sm space-y-1">
-                {(matches ?? SECTIONS.map((s) => ({ id: s.id, number: s.number, title: s.title }))).map((e) => (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => jumpTo(e.id)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-default-100 transition-colors flex gap-2"
-                  >
-                    <span className="text-primary font-semibold flex-shrink-0 font-mono">{e.number}</span>
-                    <span className="text-default-700 truncate">{e.title}</span>
-                  </button>
-                ))}
+                {tocItems.map((e) => {
+                  const isActive = activeId === e.topId
+                  const wasVisited = visited.has(e.topId)
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => jumpTo(e.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center gap-2 group ${
+                        isActive
+                          ? 'bg-primary-50 text-primary-700 font-medium ring-1 ring-primary-200'
+                          : 'hover:bg-default-100 text-default-700'
+                      }`}
+                    >
+                      <span
+                        className={`font-mono flex-shrink-0 text-xs ${
+                          isActive ? 'text-primary-600' : 'text-primary'
+                        }`}
+                      >
+                        {e.number}
+                      </span>
+                      <span className="truncate flex-1">{e.title}</span>
+                      {wasVisited && !isActive && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-success-500 flex-shrink-0" aria-label="Visitado" />
+                      )}
+                    </button>
+                  )
+                })}
                 {matches && matches.length === 0 && (
                   <p className="text-xs text-default-400 px-3 py-2">Sin resultados para «{query}».</p>
                 )}
@@ -930,14 +1173,31 @@ export default function ManualPage() {
           </Card>
         </aside>
 
-        <main className="min-w-0">
-          <Card>
-            <CardBody className="p-6 md:p-10">
-              {SECTIONS.map((s) => (
-                <Section key={s.id} s={s} onOpenImage={(src, caption) => setLightbox({ src, caption })} />
+        <main ref={mainRef} className="min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeId}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+            >
+              {SECTIONS.map((s, idx) => (
+                <motion.div
+                  key={s.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.03, duration: 0.3, ease: 'easeOut' }}
+                >
+                  <Section
+                    s={s}
+                    query={query}
+                    onOpenImage={(src, caption) => setLightbox({ src, caption })}
+                  />
+                </motion.div>
               ))}
-            </CardBody>
-          </Card>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
